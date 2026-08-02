@@ -1,0 +1,29 @@
+# Secretos y entornos
+.env*
+*.env
+!*.env.example
+*.key
+*.pem
+.rotated-secrets.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Salidas de informes (no versionar)
+*.html
+*.pdf
+*.json
+*.sarif
+*.csv
+
+# Editor
+.DS_Store
+.idea/
+.vscode/
