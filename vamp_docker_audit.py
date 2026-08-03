@@ -164,7 +164,7 @@ SECRET_VAR_PATTERNS = re.compile(
 
 # Patrones en el valor que sugieren secretos
 SECRET_VALUE_PATTERNS = [
-    re.compile(r"^sk_"),                        # Stripe / OpenAI secret key
+    re.compile(r"^sk_"),                        # Stripe / clave secreta de API de servicio
     re.compile(r"^pk_"),                        # Stripe public key (poco dañino, pero lo informamos)
     re.compile(r"^ghp_"),                       # GitHub personal access token
     re.compile(r"^glpat-"),                     # GitLab personal access token
