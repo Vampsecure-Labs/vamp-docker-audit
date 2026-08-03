@@ -1,29 +1,38 @@
-# Secretos y entornos
-.env*
-*.env
-!*.env.example
-*.key
-*.pem
-.rotated-secrets.txt
-
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 .venv/
 venv/
-dist/
+env/
 build/
+dist/
 *.egg-info/
 
-# Salidas de informes (no versionar)
+# Credenciales y secretos
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+
+# Outputs generados
 *.html
 *.pdf
 *.json
 *.sarif
 *.csv
+*.log
 
-# Editor
+# Editores y sistema operativo
 .DS_Store
+._*
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+Thumbs.db
