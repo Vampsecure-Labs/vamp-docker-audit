@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "vamp-docker-audit"
+version = "1.0"
+description = "Docker/container security auditor for authorized assessments"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "VampSecure Studios", email = "contact@vampsecurestudios.com" }]
+keywords = ["security", "pentest", "audit", "cybersecurity", "vampsecure", "docker", "container", "kubernetes", "devsecops"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+]
+dependencies = [
+    "rich>=13.7.0",
+]
+
+
+[project.scripts]
+vamp-docker-audit = "vamp_docker_audit:main"
+
+[project.urls]
+Homepage = "https://github.com/Vampsecure-Labs/vamp-docker-audit"
+Repository = "https://github.com/Vampsecure-Labs/vamp-docker-audit"
+
+[tool.setuptools]
+py-modules = ["vamp_docker_audit", "vampsec_report"]
