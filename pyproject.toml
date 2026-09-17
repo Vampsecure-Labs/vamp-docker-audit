@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vamp-docker-audit"
-version = "1.0"
+version = "1.1"
 description = "Docker/container security auditor for authorized assessments"
 readme = "README.md"
 license = { text = "MIT" }

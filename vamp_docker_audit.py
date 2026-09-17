@@ -93,7 +93,7 @@ from vampsec_report import (
     meta_from_args,
 )
 
-VERSION   = "1.0"
+VERSION   = "1.1"
 TOOL_NAME = "vamp-docker-audit"
 
 console = Console()
@@ -104,7 +104,7 @@ __   ___   __  __ ___  ___ ___ ___ _   _ ___ ___ _      _   ___ ___
  \ V / _ \| |\/| |  _/\__ \ _| (__| |_| |   / _|| |__ / _ \| _ \__ \
   \_/_/ \_\_|  |_|_|  |___/___\___|\___/|_|_\___|____/_/ \_\___/___/
   by Antonio Hernandez "Belky" — VampSecure Studios
-  vamp-docker-audit v1.0 · Docker Security Auditor
+  vamp-docker-audit v1.1 · Docker Security Auditor
   ────────────────────────────────────────────────────────────────────────
   USO EXCLUSIVO EN AUDITORÍAS AUTORIZADAS · El uso no autorizado es ilegal
 """
@@ -181,6 +181,50 @@ CONNECTION_STRING_VARS = re.compile(
     r"DB_URL|DB_CONNECTION|CONNECTION_STRING)",
     re.IGNORECASE,
 )
+
+# Patrones de secretos en comandos de historia de capas de imagen (v1.1)
+LAYER_SECRET_PATTERNS = [
+    (
+        re.compile(
+            r"(?i)(password|passwd|secret|token|api[_-]?key|apikey|"
+            r"private[_-]?key|credentials|auth[_-]?token|access[_-]?key|"
+            r"secret[_-]?key)\s*[=:]\s*\S+",
+        ),
+        "Posible credencial en parámetro RUN/ENV",
+    ),
+    (
+        re.compile(r"(?i)--password\s+\S+"),
+        "Contraseña como argumento CLI en RUN",
+    ),
+    (
+        re.compile(r"(?i)--token\s+\S+"),
+        "Token como argumento CLI en RUN",
+    ),
+    (
+        re.compile(r"AKIA[0-9A-Z]{16}"),
+        "AWS Access Key ID en historia de capa",
+    ),
+    (
+        re.compile(r"(?i)bearer\s+[A-Za-z0-9\-._~+/]{20,}"),
+        "Bearer token en historia de capa",
+    ),
+    (
+        re.compile(r"(?i)sk_live_[0-9a-zA-Z]{24,}"),
+        "Stripe Live Secret Key",
+    ),
+    (
+        re.compile(r"ghp_[0-9a-zA-Z]{36,}"),
+        "GitHub Personal Access Token",
+    ),
+    (
+        re.compile(r"glpat-[0-9a-zA-Z\-]{20,}"),
+        "GitLab Personal Access Token",
+    ),
+    (
+        re.compile(r"xox[bpoa]-[0-9]{8,}-[0-9]{8,}-\S{8,}"),
+        "Slack Token",
+    ),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -423,6 +467,9 @@ class DockerAuditor:
 
         # Fase 5: volúmenes
         self._phase5_volumenes(resultado)
+
+        # Fase 6: secretos en historia de capas de imagen (v1.1)
+        self._phase6_layer_secrets(resultado)
 
         return resultado
 
@@ -1143,6 +1190,93 @@ class DockerAuditor:
                 ),
             ))
 
+    # ── Fase 6: secretos en historia de capas de imagen (v1.1) ────────────
+
+    def _phase6_layer_secrets(self, resultado: DockerAuditResult) -> None:
+        """
+        Fase 6 — Análisis de secretos en historia de capas de imágenes.
+
+        Ejecuta 'docker history --no-trunc' sobre cada imagen en uso y busca
+        en los comandos RUN/ENV/ARG patrones de secretos conocidos (mismos
+        regex que vamp-secrets-scanner). Cualquier coincidencia genera un
+        hallazgo CRITICAL "Secret in image layer history".
+
+        Los secretos en capas son persistentes: aunque se sobreescriban en
+        capas posteriores son recuperables inspeccionando la capa afectada.
+        """
+        # Recopilar imágenes únicas de los contenedores auditados + imágenes locales
+        imagenes_en_uso: set[str] = set()
+        for car in resultado.containers:
+            if car.image and not car.image.endswith("<none>"):
+                imagenes_en_uso.add(car.image)
+
+        ok, stdout, _ = _docker(["images", "--format", "{{.Repository}}:{{.Tag}}"])
+        if ok and stdout:
+            for line in stdout.splitlines():
+                line = line.strip()
+                if line and "<none>" not in line:
+                    imagenes_en_uso.add(line)
+
+        if not imagenes_en_uso:
+            return
+
+        # Evitar analizar la misma imagen dos veces (por distintos alias)
+        imagenes_procesadas: set[str] = set()
+
+        for imagen in sorted(imagenes_en_uso):
+            if imagen in imagenes_procesadas:
+                continue
+            imagenes_procesadas.add(imagen)
+
+            ok, stdout, _ = _docker(
+                ["history", "--no-trunc", "--format", "{{.CreatedBy}}", imagen],
+                timeout=20,
+            )
+            if not ok or not stdout:
+                continue
+
+            for linea in stdout.splitlines():
+                linea = linea.strip()
+                if not linea:
+                    continue
+
+                for patron, descripcion in LAYER_SECRET_PATTERNS:
+                    match = patron.search(linea)
+                    if match:
+                        match_texto = match.group(0)
+                        # Redactar el valor para no exponer el secreto real
+                        redacted = match_texto[:8] + "****" if len(match_texto) > 8 else "****"
+                        self._counter += 1
+                        resultado.image_findings.append(Finding(
+                            id=f"DOCK-{self._counter:03d}",
+                            severity="CRITICAL",
+                            category="Imagen",
+                            title=f"Secreto en historia de capa de imagen: {imagen}",
+                            description=(
+                                f"Se ha detectado un posible secreto en la historia de "
+                                f"capas de la imagen '{imagen}'. Tipo: {descripcion}. "
+                                "Los secretos en capas de imagen son persistentes — aunque "
+                                "se sobreescriban en capas posteriores son recuperables "
+                                "inspeccionando las capas anteriores con 'docker history'."
+                            ),
+                            evidence=(
+                                f"Imagen: {imagen}\n"
+                                f"Capa: ...{linea[-120:]}\n"
+                                f"Patrón detectado: {redacted}"
+                            ),
+                            remediation=(
+                                "1. Rotar inmediatamente el secreto expuesto.\n"
+                                "2. Reconstruir la imagen desde cero sin el secreto en el Dockerfile:\n"
+                                "   - No usar RUN con credenciales en claro\n"
+                                "   - No usar ENV para inyectar secretos en build time\n"
+                                "3. Usar Docker BuildKit secrets:\n"
+                                "   RUN --mount=type=secret,id=mi_secreto cat /run/secrets/mi_secreto\n"
+                                "4. Eliminar la imagen comprometida del registro y todos sus tags.\n"
+                                "Ref: CIS Docker Benchmark §4.10 · OWASP Docker Security"
+                            ),
+                        ))
+                        break  # Un hallazgo por línea; evitar múltiples patrones sobre la misma
+
 
 # ---------------------------------------------------------------------------
 # Reportes en consola Rich
@@ -1615,6 +1749,218 @@ def _findings_vsl(resultado: DockerAuditResult) -> List[VSLFinding]:
 
 
 # ---------------------------------------------------------------------------
+# SBOM — Software Bill of Materials (CycloneDX simplificado) — v1.1
+# ---------------------------------------------------------------------------
+
+def _uuid_simple() -> str:
+    """Genera un UUID v4 sin dependencias externas (solo os.urandom)."""
+    b = bytearray(os.urandom(16))
+    b[6] = (b[6] & 0x0F) | 0x40  # versión 4
+    b[8] = (b[8] & 0x3F) | 0x80  # variante RFC 4122
+    h = b.hex()
+    return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+
+
+def _sbom_para_imagen(image_name: str) -> dict:
+    """
+    Genera un SBOM básico en formato CycloneDX 1.4 para una imagen Docker.
+
+    Ejecuta 'docker inspect' para obtener layers y metadatos, y arranca un
+    contenedor temporal para obtener OS + paquetes pip + paquetes dpkg.
+
+    Si la imagen no tiene shell disponible, marca 'components_unavailable': True.
+
+    Retorna un diccionario con esquema CycloneDX simplificado:
+      {"bomFormat":"CycloneDX","specVersion":"1.4","components":[{...}]}
+    """
+    sbom: dict = {
+        "bomFormat":    "CycloneDX",
+        "specVersion":  "1.4",
+        "serialNumber": f"urn:uuid:{_uuid_simple()}",
+        "version":      1,
+        "metadata": {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "tools": [{
+                "vendor":  "VampSecure Studios",
+                "name":    TOOL_NAME,
+                "version": VERSION,
+            }],
+            "component": {
+                "type": "container",
+                "name": image_name,
+            },
+        },
+        "components": [],
+    }
+
+    # Obtener metadatos e identificadores de layers vía docker inspect
+    ok, stdout, _ = _docker(["inspect", image_name], timeout=15)
+    if ok and stdout:
+        try:
+            data = json.loads(stdout)
+            if isinstance(data, list) and data:
+                img = data[0]
+                layers = img.get("RootFS", {}).get("Layers", [])
+                sbom["metadata"]["component"]["hashes"] = [
+                    {"alg": "SHA-256", "content": la.replace("sha256:", "")}
+                    for la in layers[:10]
+                ]
+                labels = img.get("Config", {}).get("Labels") or {}
+                if labels:
+                    sbom["metadata"]["component"]["labels"] = labels
+        except (json.JSONDecodeError, TypeError, KeyError):
+            pass
+
+    # Intentar obtener OS + paquetes con un contenedor temporal
+    cmd_paquetes = (
+        "cat /etc/os-release 2>/dev/null; "
+        "echo '---PACKAGES---'; "
+        "(pip list --format=json 2>/dev/null || echo '[]'); "
+        "echo '---DPKG---'; "
+        "(dpkg -l 2>/dev/null | awk 'NR>5{print $2,$3}' | head -100 || echo '')"
+    )
+    ok, stdout, _stderr = _docker(
+        ["run", "--rm", "--entrypoint", "sh", image_name, "-c", cmd_paquetes],
+        timeout=30,
+    )
+
+    if not ok:
+        # La imagen no tiene shell disponible (imagen distroless, scratch, etc.)
+        sbom["components_unavailable"] = True
+        sbom["components_unavailable_reason"] = (
+            "La imagen no tiene shell disponible o el contenedor no pudo ejecutarse"
+        )
+        return sbom
+
+    # Parsear la salida del contenedor temporal
+    componentes: list[dict] = []
+
+    try:
+        partes_principales = stdout.split("---PACKAGES---", 1)
+        os_info = partes_principales[0].strip()
+
+        # Extraer nombre del OS
+        for linea_os in os_info.splitlines():
+            if linea_os.startswith("PRETTY_NAME="):
+                os_name = linea_os.split("=", 1)[1].strip().strip('"')
+                componentes.append({
+                    "type":    "operating-system",
+                    "name":    os_name,
+                    "version": "",
+                })
+                break
+
+        if len(partes_principales) > 1:
+            resto = partes_principales[1]
+            partes_pkg = resto.split("---DPKG---", 1)
+
+            # Paquetes pip
+            try:
+                pip_raw = partes_pkg[0].strip()
+                if pip_raw and pip_raw != "[]":
+                    pip_pkgs = json.loads(pip_raw)
+                    for pkg in pip_pkgs:
+                        n = pkg.get("name", "")
+                        v = pkg.get("version", "")
+                        componentes.append({
+                            "type":    "library",
+                            "name":    n,
+                            "version": v,
+                            "purl":    f"pkg:pypi/{n.lower()}@{v}",
+                        })
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Paquetes dpkg
+            if len(partes_pkg) > 1:
+                for linea_dpkg in partes_pkg[1].splitlines():
+                    linea_dpkg = linea_dpkg.strip()
+                    if not linea_dpkg:
+                        continue
+                    partes_dpkg = linea_dpkg.split(None, 1)
+                    if len(partes_dpkg) == 2:
+                        nombre_pkg, version_pkg = partes_dpkg
+                        componentes.append({
+                            "type":    "library",
+                            "name":    nombre_pkg,
+                            "version": version_pkg,
+                            "purl":    f"pkg:deb/{nombre_pkg}@{version_pkg}",
+                        })
+    except Exception:
+        pass
+
+    sbom["components"] = componentes
+    return sbom
+
+
+def _generar_sboms(
+    resultado:  DockerAuditResult,
+    sbom_file:  Optional[str],
+    sbom_dir:   Optional[str],
+    cons:       Console,
+) -> None:
+    """
+    Orquesta la generación de SBOMs para las imágenes de los contenedores auditados.
+
+    --sbom FILE    → genera un único JSON agregado con todos los SBOMs
+    --sbom-dir DIR → genera un fichero .sbom.json por imagen en el directorio
+    """
+    if not sbom_file and not sbom_dir:
+        return
+
+    # Recopilar imágenes únicas de los contenedores auditados
+    imagenes: set[str] = set()
+    for car in resultado.containers:
+        if car.image and "<none>" not in car.image:
+            imagenes.add(car.image)
+
+    if not imagenes:
+        cons.print("[yellow]SBOM: No se encontraron imágenes para procesar.[/]")
+        return
+
+    sboms_generados: list[dict] = []
+
+    cons.print(f"\n[bold cyan]Generando SBOMs para {len(imagenes)} imagen(es)…[/]\n")
+    for imagen in sorted(imagenes):
+        cons.print(f"  [dim]SBOM:[/dim] {imagen}…", end=" ")
+        sbom = _sbom_para_imagen(imagen)
+        sbom["imagen"] = imagen
+        n_comp = len(sbom.get("components", []))
+        estado = (
+            "[yellow]sin shell[/yellow]"
+            if sbom.get("components_unavailable")
+            else f"[green]{n_comp} componentes[/green]"
+        )
+        cons.print(estado)
+        sboms_generados.append(sbom)
+
+    # Salida agregada en un único fichero
+    if sbom_file:
+        Path(sbom_file).write_text(
+            json.dumps({"sboms": sboms_generados}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        cons.print(f"\n[green]✔[/] SBOM agregado guardado en [bold]{sbom_file}[/]")
+
+    # Salida por directorio (un fichero por imagen)
+    if sbom_dir:
+        dir_path = Path(sbom_dir)
+        dir_path.mkdir(parents=True, exist_ok=True)
+        for sbom in sboms_generados:
+            imagen = sbom.get("imagen", "unknown")
+            # Normalizar el nombre de la imagen para usarlo como nombre de fichero
+            nombre_fichero = re.sub(r"[^a-zA-Z0-9._-]", "_", imagen) + ".sbom.json"
+            (dir_path / nombre_fichero).write_text(
+                json.dumps(sbom, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        cons.print(
+            f"[green]✔[/] SBOMs individuales guardados en [bold]{sbom_dir}/[/] "
+            f"({len(sboms_generados)} fichero(s))"
+        )
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1658,6 +2004,22 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--html", metavar="FICHERO",
         help="Guardar informe en HTML dark-theme standalone",
+    )
+
+    # SBOM — Software Bill of Materials (v1.1)
+    p.add_argument(
+        "--sbom", metavar="FICHERO",
+        help=(
+            "Generar SBOM CycloneDX 1.4 agregado para todas las imágenes "
+            "auditadas y guardarlo en FICHERO (JSON)"
+        ),
+    )
+    p.add_argument(
+        "--sbom-dir", metavar="DIR", dest="sbom_dir",
+        help=(
+            "Generar un SBOM CycloneDX 1.4 por imagen auditada y guardarlos "
+            "en DIR (un fichero .sbom.json por imagen)"
+        ),
     )
 
     # Argumentos de informe unificado VSL
@@ -1736,6 +2098,15 @@ def main() -> None:
     if args.html:
         Path(args.html).write_text(reporter.to_html(resultado), encoding="utf-8")
         console.print(f"[green]✔[/] HTML guardado en [bold]{args.html}[/]")
+
+    # Generar SBOM (v1.1)
+    if getattr(args, "sbom", None) or getattr(args, "sbom_dir", None):
+        _generar_sboms(
+            resultado,
+            sbom_file=getattr(args, "sbom", None),
+            sbom_dir=getattr(args, "sbom_dir", None),
+            cons=console,
+        )
 
     # Informe unificado VSL
     if getattr(args, "report_html", None) or getattr(args, "report_pdf", None):
