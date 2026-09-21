@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+# © VampSecure Studios — VampSecure Labs Security Research Division
 """
 vamp_docker_audit.py — Auditor de Seguridad de Entornos Docker
 ===============================================================
 VampSecure Labs · VampSecure Studios
-Para Uso Exclusivo en Pruebas de Penetración Autorizadas — v1.0
+Para Uso Exclusivo en Pruebas de Penetración Autorizadas — v1.2
 
 DESCRIPCIÓN GENERAL
 -------------------
@@ -45,6 +46,20 @@ COMPROBACIONES REALIZADAS
 
   Fase 5: Volúmenes
     · Inventario de volúmenes registrados
+
+  Fase 6: Secretos en historia de capas de imagen
+    · Detección de credenciales en RUN/ENV/ARG de capas (v1.1)
+
+  Fase 7: CVEs específicos (v1.2)
+    · CVE-2026-34040: Docker AuthZ Plugin Bypass
+      - DOCK-AUTHZ-001: plugin AuthZ activo + daemon vulnerable (CRITICAL)
+      - DOCK-AUTHZ-002: plugin AuthZ activo, versión no determinada (HIGH)
+      - DOCK-AUTHZ-003: socket Docker montado en contenedor en marcha (CRITICAL)
+    · CVE-2025-52881: runc Container Escape
+      - DOCK-RUNC-001: versión runc vulnerable (CRITICAL)
+      - DOCK-RUNC-002: seccomp no habilitado por defecto (HIGH)
+    · Perfiles AppArmor
+      - DOCK-SEC-010: AppArmor no habilitado en Linux (MEDIUM)
 
 FORMATOS DE SALIDA
 ------------------
@@ -93,18 +108,18 @@ from vampsec_report import (
     meta_from_args,
 )
 
-VERSION   = "1.1"
+VERSION   = "1.2"
 TOOL_NAME = "vamp-docker-audit"
 
 console = Console()
 
 BANNER = r"""
-__   ___   __  __ ___  ___ ___ ___ _   _ ___ ___ _      _   ___ ___ 
+__   ___   __  __ ___  ___ ___ ___ _   _ ___ ___ _      _   ___ ___
 \ \ / /_\ |  \/  | _ \/ __| __/ __| | | | _ \ __| |    /_\ | _ ) __|
  \ V / _ \| |\/| |  _/\__ \ _| (__| |_| |   / _|| |__ / _ \| _ \__ \
   \_/_/ \_\_|  |_|_|  |___/___\___|\___/|_|_\___|____/_/ \_\___/___/
   by Antonio Hernandez "Belky" — VampSecure Studios
-  vamp-docker-audit v1.1 · Docker Security Auditor
+  vamp-docker-audit v1.2 · Docker Security Auditor
   ────────────────────────────────────────────────────────────────────────
   USO EXCLUSIVO EN AUDITORÍAS AUTORIZADAS · El uso no autorizado es ilegal
 """
@@ -470,6 +485,9 @@ class DockerAuditor:
 
         # Fase 6: secretos en historia de capas de imagen (v1.1)
         self._phase6_layer_secrets(resultado)
+
+        # Fase 7: checks de CVEs específicos (v1.2)
+        self._phase7_cve_checks(resultado)
 
         return resultado
 
@@ -1276,6 +1294,403 @@ class DockerAuditor:
                             ),
                         ))
                         break  # Un hallazgo por línea; evitar múltiples patrones sobre la misma
+
+    # ── Fase 7: CVEs específicos (v1.2) ────────────────────────────────────
+
+    def _phase7_cve_checks(self, resultado: DockerAuditResult) -> None:
+        """
+        Fase 7 — Comprobaciones de CVEs específicos (v1.2).
+
+        Cubre los siguientes vectores:
+          - CVE-2026-34040: Docker AuthZ Plugin Bypass
+          - CVE-2025-52881: runc Container Escape
+          - AppArmor no habilitado en Linux (DOCK-SEC-010)
+          - Resumen de contenedores con socket Docker montado (DOCK-AUTHZ-003)
+        """
+        self._check_cve_authz(resultado)
+        self._check_cve_runc(resultado)
+        self._check_apparmor(resultado)
+        self._check_authz_sock_resumen(resultado)
+
+    def _check_cve_authz(self, resultado: DockerAuditResult) -> None:
+        """
+        CVE-2026-34040 — Docker AuthZ Plugin Bypass.
+
+        Si hay plugins de autorización (AuthZ) activos, obtiene la versión del
+        daemon y comprueba si es vulnerable. Un atacante con acceso al socket
+        puede eludir los plugins AuthZ mediante peticiones HTTP con
+        Transfer-Encoding chunked manipulado.
+
+        Versiones afectadas:
+          - Rama 27.x: < 27.5.1
+          - Rama 26.x: < 26.1.9
+          - Rama 25.x: < 25.0.9
+        """
+        # Obtener plugins AuthZ activos del daemon
+        ok, stdout, _ = _docker(
+            ["info", "--format", "{{json .Plugins.Authorization}}"]
+        )
+        if not ok or not stdout or stdout.strip() in ("null", "[]", ""):
+            return  # Sin plugins AuthZ activos, no hay riesgo
+
+        try:
+            plugins = json.loads(stdout.strip())
+        except json.JSONDecodeError:
+            plugins = [stdout.strip()]
+
+        # Lista vacía o nula → sin riesgo
+        if not plugins:
+            return
+
+        plugins_str = (
+            ", ".join(plugins) if isinstance(plugins, list) else str(plugins)
+        )
+
+        # Obtener versión del daemon para determinar si es vulnerable
+        ok_v, daemon_ver, _ = _docker(
+            ["version", "--format", "{{.Server.Version}}"]
+        )
+
+        if not ok_v or not daemon_ver.strip():
+            # No se puede determinar la versión: alerta de precaución (HIGH)
+            resultado.image_findings.append(Finding(
+                id="DOCK-AUTHZ-002",
+                severity="HIGH",
+                category="CVE",
+                title="CVE-2026-34040: Plugin AuthZ activo — versión daemon no determinada",
+                description=(
+                    "Hay plugins de autorización (AuthZ) activos en el daemon Docker. "
+                    "No se ha podido determinar la versión del daemon para confirmar "
+                    "si es vulnerable a CVE-2026-34040. Este CVE permite eludir los "
+                    "plugins AuthZ mediante peticiones HTTP con Transfer-Encoding "
+                    "chunked manipulado, obteniendo acceso no autorizado al daemon. "
+                    "Verificar manualmente si el daemon está en una versión parcheada."
+                ),
+                evidence=f"Plugins AuthZ activos: {plugins_str}",
+                remediation=(
+                    "Actualizar el daemon Docker a una versión parcheada:\n"
+                    "  Rama 27.x → 27.5.1 o superior\n"
+                    "  Rama 26.x → 26.1.9 o superior\n"
+                    "  Rama 25.x → 25.0.9 o superior\n"
+                    "Verificar versión actual: docker version --format '{{.Server.Version}}'\n"
+                    "Ref: CVE-2026-34040 · Docker Security Advisory"
+                ),
+            ))
+            return
+
+        daemon_ver = daemon_ver.strip()
+        if self._is_authz_daemon_vulnerable(daemon_ver):
+            resultado.image_findings.append(Finding(
+                id="DOCK-AUTHZ-001",
+                severity="CRITICAL",
+                category="CVE",
+                title=(
+                    f"CVE-2026-34040: Plugin AuthZ activo con daemon Docker vulnerable "
+                    f"({daemon_ver})"
+                ),
+                description=(
+                    f"El daemon Docker v{daemon_ver} tiene plugins de autorización "
+                    f"activos ({plugins_str}) y es vulnerable a CVE-2026-34040. "
+                    "Este CVE permite eludir los plugins AuthZ mediante peticiones "
+                    "HTTP con Transfer-Encoding chunked manipulado, obteniendo acceso "
+                    "no autorizado al daemon. La combinación de AuthZ activo con "
+                    "versión vulnerable es directamente explotable."
+                ),
+                evidence=(
+                    f"Daemon: {daemon_ver} | Plugins AuthZ: {plugins_str}"
+                ),
+                remediation=(
+                    "URGENTE — Actualizar el daemon Docker inmediatamente:\n"
+                    "  Rama 27.x → 27.5.1 o superior\n"
+                    "  Rama 26.x → 26.1.9 o superior\n"
+                    "  Rama 25.x → 25.0.9 o superior\n"
+                    "Como mitigación temporal, restringir el acceso al socket Docker\n"
+                    "exclusivamente a procesos autorizados (chmod 660 + grupo docker).\n"
+                    "Ref: CVE-2026-34040 · Docker Security Advisory"
+                ),
+            ))
+
+    def _is_authz_daemon_vulnerable(self, version_str: str) -> bool:
+        """
+        Determina si una versión del daemon Docker es vulnerable a CVE-2026-34040.
+
+        Versiones parcheadas por rama:
+          - 27.x → 27.5.1 o superior
+          - 26.x → 26.1.9 o superior
+          - 25.x → 25.0.9 o superior
+
+        Versiones de otras ramas (< 25 o > 27) se consideran fuera del alcance
+        conocido del CVE y se devuelve False (sin falsos positivos).
+        """
+        match = re.match(r"^(\d+)\.(\d+)\.(\d+)", version_str)
+        if not match:
+            return False
+        major = int(match.group(1))
+        minor = int(match.group(2))
+        patch_v = int(match.group(3))
+
+        if major == 27:
+            # Vulnerable si < 27.5.1
+            return (minor, patch_v) < (5, 1)
+        elif major == 26:
+            # Vulnerable si < 26.1.9
+            return (minor, patch_v) < (1, 9)
+        elif major == 25:
+            # Vulnerable si < 25.0.9
+            return (minor, patch_v) < (0, 9)
+
+        # Ramas no cubiertas por el CVE conocido
+        return False
+
+    def _check_cve_runc(self, resultado: DockerAuditResult) -> None:
+        """
+        CVE-2025-52881 — runc Container Escape.
+
+        Comprueba la versión de runc instalada y si seccomp está habilitado
+        como mecanismo de mitigación parcial.
+
+        Versiones parcheadas:
+          - runc >= 1.2.8  (rama 1.2.x)
+          - runc >= 1.3.3  (rama 1.3.x)
+          - runc >= 1.4.0-rc.3 (rama 1.4.x)
+
+        Versiones 1.0.x y 1.1.x son vulnerables.
+        """
+        # 1. Obtener versión de runc e informar si es vulnerable
+        runc_ver = self._get_runc_version()
+        if runc_ver and self._is_runc_vulnerable(runc_ver):
+            resultado.image_findings.append(Finding(
+                id="DOCK-RUNC-001",
+                severity="CRITICAL",
+                category="CVE",
+                title=f"CVE-2025-52881: Versión runc vulnerable ({runc_ver})",
+                description=(
+                    f"La versión de runc instalada ({runc_ver}) es vulnerable a "
+                    "CVE-2025-52881, que permite la escapada del contenedor mediante "
+                    "una condición de carrera en la gestión de namespaces de red al "
+                    "arrancar el proceso de inicio del contenedor. Un atacante con "
+                    "capacidad de ejecutar contenedores puede obtener acceso root "
+                    "en el host."
+                ),
+                evidence=f"runc versión detectada: {runc_ver}",
+                remediation=(
+                    "Actualizar runc a una versión parcheada:\n"
+                    "  Rama 1.2.x → 1.2.8 o superior\n"
+                    "  Rama 1.3.x → 1.3.3 o superior\n"
+                    "  Rama 1.4.x → 1.4.0-rc.3 o superior\n"
+                    "En sistemas Debian/Ubuntu:\n"
+                    "  apt-get update && apt-get upgrade runc\n"
+                    "O actualizar Docker Engine, que distribuye runc actualizado:\n"
+                    "  apt-get upgrade docker-ce\n"
+                    "Ref: CVE-2025-52881 · runc Security Advisory"
+                ),
+            ))
+
+        # 2. Comprobar si seccomp está habilitado por defecto (mitigación parcial)
+        ok, stdout, _ = _docker(["info", "--format", "{{.SecurityOptions}}"])
+        if ok and stdout:
+            if "seccomp" not in stdout.lower():
+                resultado.image_findings.append(Finding(
+                    id="DOCK-RUNC-002",
+                    severity="HIGH",
+                    category="CVE",
+                    title="Seccomp no habilitado por defecto — mitigación CVE-2025-52881 ausente",
+                    description=(
+                        "El perfil seccomp por defecto no está activo en este entorno Docker. "
+                        "Seccomp restringe las syscalls disponibles para los contenedores y "
+                        "actúa como capa de defensa adicional frente a escapadas de contenedor, "
+                        "incluyendo CVE-2025-52881. Sin seccomp, el riesgo de explotación "
+                        "de vulnerabilidades de escapada es significativamente mayor."
+                    ),
+                    evidence=f"SecurityOptions del daemon: {stdout.strip()}",
+                    remediation=(
+                        "Habilitar el perfil seccomp por defecto en el daemon Docker.\n"
+                        "En /etc/docker/daemon.json añadir o verificar:\n"
+                        '  {"seccomp-profile": "/etc/docker/seccomp.json"}\n'
+                        "El perfil por defecto de Docker ya restringe las syscalls más "
+                        "peligrosas y está incluido en la instalación estándar.\n"
+                        "Verificar: docker info | grep -i seccomp\n"
+                        "Ref: Docker Security — Seccomp profiles · CVE-2025-52881"
+                    ),
+                ))
+
+    def _get_runc_version(self) -> Optional[str]:
+        """
+        Obtiene la versión semántica de runc del sistema.
+
+        Intenta primero con 'runc --version' (da versión legible).
+        Como fallback intenta extraer el ID de commit de 'docker info'
+        (no es una versión semántica, pero registra disponibilidad).
+
+        Retorna la versión semántica (p.ej. "1.1.12") o None si no se puede
+        determinar de forma fiable.
+        """
+        # Intentar obtener versión semántica directamente de runc
+        try:
+            res = subprocess.run(
+                ["runc", "--version"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if res.returncode == 0 and res.stdout:
+                # Formato habitual: "runc version 1.1.12\ncommit: ...\nspec: ..."
+                match = re.search(r"runc version (\S+)", res.stdout)
+                if match:
+                    return match.group(1)
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            pass
+
+        # Fallback: docker info devuelve el hash de commit de runc, no la versión
+        # Solo lo intentamos para documentación; no sirve para comparación semántica
+        ok, stdout, _ = _docker(
+            ["info", "--format", "{{.RuncCommit.ID}}"]
+        )
+        # Si docker info reporta un commit hash válido pero no tenemos versión,
+        # devolvemos None para no generar falsos positivos en la comparación
+        return None
+
+    def _is_runc_vulnerable(self, version_str: str) -> bool:
+        """
+        Determina si una versión de runc es vulnerable a CVE-2025-52881.
+
+        Versiones parcheadas:
+          - 1.2.x: >= 1.2.8
+          - 1.3.x: >= 1.3.3
+          - 1.4.x: >= 1.4.0-rc.3 (o cualquier 1.4.0 release)
+
+        Las ramas 1.0.x y 1.1.x se consideran vulnerables (sin parche oficial).
+        """
+        # Parsear versión incluyendo sufijos de pre-release tipo "rc.N"
+        match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?", version_str)
+        if not match:
+            return False
+
+        major    = int(match.group(1))
+        minor    = int(match.group(2))
+        patch_v  = int(match.group(3))
+        rc_num   = int(match.group(4)) if match.group(4) else None
+
+        # Solo aplica a la rama 1.x de runc
+        if major != 1:
+            return False
+
+        if minor == 2:
+            # Parcheado en >= 1.2.8
+            return patch_v < 8
+        elif minor == 3:
+            # Parcheado en >= 1.3.3
+            return patch_v < 3
+        elif minor == 4:
+            if patch_v > 0:
+                return False  # 1.4.1+ está parcheado
+            # Es 1.4.0 o 1.4.0-rc.N
+            if rc_num is None:
+                return False  # 1.4.0 release final está parcheado
+            return rc_num < 3  # rc.1 y rc.2 son vulnerables; rc.3+ parcheado
+        elif minor <= 1:
+            # Ramas 1.0.x y 1.1.x — sin parche oficial, vulnerables
+            return True
+
+        # Ramas futuras (1.5+) se asumen parcheadas
+        return False
+
+    def _check_apparmor(self, resultado: DockerAuditResult) -> None:
+        """
+        DOCK-SEC-010 — Comprobación de AppArmor habilitado (solo Linux).
+
+        AppArmor es un mecanismo de control de acceso obligatorio (MAC) que
+        restringe las operaciones de los contenedores en el host. Si no está
+        activo en un sistema Linux, el aislamiento de los contenedores es menor.
+        """
+        # AppArmor solo aplica en Linux; en macOS/Windows no es relevante
+        if platform.system() != "Linux":
+            return
+
+        ok, stdout, _ = _docker(["info", "--format", "{{.SecurityOptions}}"])
+        if not ok or not stdout:
+            return
+
+        if "apparmor" not in stdout.lower():
+            resultado.image_findings.append(Finding(
+                id="DOCK-SEC-010",
+                severity="MEDIUM",
+                category="Entorno",
+                title="AppArmor no habilitado en el daemon Docker (Linux)",
+                description=(
+                    "El daemon Docker no reporta AppArmor como mecanismo de seguridad "
+                    "activo. En sistemas Linux, AppArmor proporciona control de acceso "
+                    "obligatorio (MAC) que restringe las operaciones disponibles para "
+                    "los procesos dentro de los contenedores, limitando el impacto de "
+                    "una posible escapada o compromiso de contenedor."
+                ),
+                evidence=f"SecurityOptions del daemon: {stdout.strip()}",
+                remediation=(
+                    "Habilitar AppArmor en el sistema e instalar el perfil Docker:\n"
+                    "  apt-get install apparmor apparmor-utils\n"
+                    "  systemctl enable apparmor && systemctl start apparmor\n"
+                    "El perfil 'docker-default' se activa automáticamente al "
+                    "reiniciar el daemon Docker.\n"
+                    "Verificar estado: docker info | grep -i apparmor\n"
+                    "Ref: CIS Docker Benchmark §5.1 · Docker AppArmor Security Profile"
+                ),
+            ))
+
+    def _check_authz_sock_resumen(self, resultado: DockerAuditResult) -> None:
+        """
+        DOCK-AUTHZ-003 — Resumen de contenedores con socket Docker montado.
+
+        Genera un hallazgo host-level que agrupa todos los contenedores en marcha
+        que tienen /var/run/docker.sock montado. Complementa los hallazgos
+        individuales DOCK-004 de la fase 1 con un vector adicional relacionado
+        con CVE-2026-34040: si hay un plugin AuthZ activo, la presencia del
+        socket en un contenedor permite ejecutar la escalada directamente desde
+        dentro del contenedor comprometido.
+        """
+        contenedores_con_sock: list[str] = []
+
+        for car in resultado.containers:
+            data = _docker_inspect(car.container_name)
+            if data is None:
+                continue
+            mounts = data.get("Mounts", [])
+            for m in mounts:
+                if "docker.sock" in m.get("Source", ""):
+                    contenedores_con_sock.append(car.container_name)
+                    break  # Un contenedor puede tener el sock en varios mounts; contarlo una vez
+
+        if not contenedores_con_sock:
+            return
+
+        num = len(contenedores_con_sock)
+        resultado.image_findings.append(Finding(
+            id="DOCK-AUTHZ-003",
+            severity="CRITICAL",
+            category="CVE",
+            title=(
+                f"Socket Docker montado en {num} contenedor(es) en marcha "
+                "(vector CVE-2026-34040)"
+            ),
+            description=(
+                f"{num} contenedor(es) en ejecución tienen el socket Docker "
+                "(/var/run/docker.sock) montado como volumen. Cualquier proceso "
+                "dentro de esos contenedores puede comunicarse directamente con el "
+                "daemon, crear contenedores privilegiados y obtener acceso root en "
+                "el host. En presencia de CVE-2026-34040, este escenario también "
+                "permite eludir los plugins de autorización (AuthZ) activos, "
+                "amplificando el impacto del bypass."
+            ),
+            evidence=(
+                f"Contenedores con socket montado: {', '.join(contenedores_con_sock)}"
+            ),
+            remediation=(
+                "Eliminar el montaje del socket Docker de todos los contenedores listados.\n"
+                "Alternativas si el contenedor necesita gestionar otros contenedores:\n"
+                "  1. docker-socket-proxy: restringe los métodos de API expuestos\n"
+                "     (https://github.com/Tecnativa/docker-socket-proxy)\n"
+                "  2. Docker-in-Docker (DinD) con TLS y credenciales rotativas\n"
+                "  3. API de Kubernetes si el entorno lo permite\n"
+                "Ref: CIS Docker Benchmark §5.31 · CVE-2026-34040"
+            ),
+        ))
 
 
 # ---------------------------------------------------------------------------
