@@ -4,7 +4,7 @@
 vamp_docker_audit.py — Auditor de Seguridad de Entornos Docker
 ===============================================================
 VampSecure Labs · VampSecure Studios
-Para Uso Exclusivo en Pruebas de Penetración Autorizadas — v1.2
+Para Uso Exclusivo en Pruebas de Penetración Autorizadas — v1.3
 
 DESCRIPCIÓN GENERAL
 -------------------
@@ -108,7 +108,7 @@ from vampsec_report import (
     meta_from_args,
 )
 
-VERSION   = "1.2"
+VERSION   = "1.3"
 TOOL_NAME = "vamp-docker-audit"
 
 console = Console()
@@ -119,7 +119,7 @@ __   ___   __  __ ___  ___ ___ ___ _   _ ___ ___ _      _   ___ ___
  \ V / _ \| |\/| |  _/\__ \ _| (__| |_| |   / _|| |__ / _ \| _ \__ \
   \_/_/ \_\_|  |_|_|  |___/___\___|\___/|_|_\___|____/_/ \_\___/___/
   by Antonio Hernandez "Belky" — VampSecure Studios
-  vamp-docker-audit v1.2 · Docker Security Auditor
+  vamp-docker-audit v1.3 · Docker Security Auditor
   ────────────────────────────────────────────────────────────────────────
   USO EXCLUSIVO EN AUDITORÍAS AUTORIZADAS · El uso no autorizado es ilegal
 """
@@ -1691,6 +1691,157 @@ class DockerAuditor:
                 "Ref: CIS Docker Benchmark §5.31 · CVE-2026-34040"
             ),
         ))
+
+    def _generate_sbom(
+        self,
+        container_id_or_name: str,
+        output_dir: Optional[str] = None,
+    ) -> dict:
+        """
+        Genera un SBOM CycloneDX 1.4 para un contenedor específico (v1.3).
+
+        Inspecciona el contenedor para obtener la imagen base, detecta el SO
+        y extrae la lista de paquetes instalados vía dpkg (Debian/Ubuntu) o
+        rpm (RHEL/CentOS).
+
+        Parámetros
+        ----------
+        container_id_or_name : ID o nombre del contenedor Docker
+        output_dir           : Si se indica, guarda el resultado en
+                               <output_dir>/sbom-<contenedor>.json
+
+        Retorna
+        -------
+        dict — SBOM en formato CycloneDX 1.4; clave 'error' si falla.
+        """
+        # Obtener metadatos del contenedor vía docker inspect
+        ok, stdout, _ = _docker(["inspect", container_id_or_name], timeout=15)
+        if not ok or not stdout:
+            return {"error": f"No se pudo inspeccionar el contenedor '{container_id_or_name}'"}
+
+        try:
+            data = json.loads(stdout)
+            if not (isinstance(data, list) and data):
+                return {"error": "Respuesta de inspect inesperada"}
+            info = data[0]
+        except (json.JSONDecodeError, TypeError):
+            return {"error": "JSON de inspect inválido"}
+
+        # Nombre del contenedor y de la imagen base
+        nombre_cont = (info.get("Name") or container_id_or_name).lstrip("/")
+        imagen      = info.get("Config", {}).get("Image", "")
+
+        sbom: dict = {
+            "bomFormat":    "CycloneDX",
+            "specVersion":  "1.4",
+            "serialNumber": f"urn:uuid:{_uuid_simple()}",
+            "version":      1,
+            "metadata": {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "tools": [{
+                    "vendor":  "VampSecure Studios",
+                    "name":    TOOL_NAME,
+                    "version": VERSION,
+                }],
+                "component": {
+                    "type": "container",
+                    "name": imagen,
+                },
+            },
+            "components": [],
+        }
+
+        if not imagen:
+            sbom["components_unavailable"] = True
+            sbom["components_unavailable_reason"] = (
+                "No se pudo determinar la imagen base del contenedor"
+            )
+            return sbom
+
+        # Detectar SO arrancando un contenedor temporal
+        ok_os, stdout_os, _ = _docker(
+            ["run", "--rm", "--entrypoint", "", imagen, "cat", "/etc/os-release"],
+            timeout=20,
+        )
+
+        componentes: list[dict] = []
+
+        if ok_os and stdout_os:
+            # Parsear nombre del SO desde /etc/os-release
+            for linea in stdout_os.splitlines():
+                if linea.startswith("PRETTY_NAME="):
+                    os_name = linea.split("=", 1)[1].strip().strip('"')
+                    componentes.append({
+                        "type":    "operating-system",
+                        "name":    os_name,
+                        "version": "",
+                    })
+                    break
+
+            # Intentar paquetes Debian/Ubuntu vía /var/lib/dpkg/status
+            ok_dpkg, stdout_dpkg, _ = _docker(
+                ["run", "--rm", "--entrypoint", "", imagen,
+                 "sh", "-c",
+                 "awk '/^Package:/{p=$2} /^Version:/{print p,$2}' "
+                 "/var/lib/dpkg/status 2>/dev/null | head -200"],
+                timeout=20,
+            )
+            if ok_dpkg and stdout_dpkg:
+                for linea in stdout_dpkg.splitlines():
+                    partes = linea.strip().split(None, 1)
+                    if len(partes) == 2:
+                        componentes.append({
+                            "type":    "library",
+                            "name":    partes[0],
+                            "version": partes[1],
+                            "purl":    f"pkg:deb/{partes[0]}@{partes[1]}",
+                        })
+            else:
+                # Intentar paquetes RPM (RHEL/CentOS) como alternativa
+                ok_rpm, stdout_rpm, _ = _docker(
+                    ["run", "--rm", "--entrypoint", "", imagen,
+                     "rpm", "-qa", "--queryformat", "%{NAME} %{VERSION}-%{RELEASE}\n"],
+                    timeout=20,
+                )
+                if ok_rpm and stdout_rpm:
+                    for linea in stdout_rpm.splitlines():
+                        partes = linea.strip().split(None, 1)
+                        if len(partes) == 2:
+                            componentes.append({
+                                "type":    "library",
+                                "name":    partes[0],
+                                "version": partes[1],
+                                "purl":    f"pkg:rpm/{partes[0]}@{partes[1]}",
+                            })
+        else:
+            # Sin shell disponible (imagen distroless, scratch, etc.)
+            sbom["components_unavailable"] = True
+            sbom["components_unavailable_reason"] = (
+                "La imagen no tiene shell disponible para inspección de paquetes"
+            )
+
+        sbom["components"] = componentes
+        n_comp = len(componentes)
+        if n_comp:
+            console.print(
+                f"  [dim]SBOM[/dim] {nombre_cont}: "
+                f"[green]{n_comp} componentes[/green]"
+            )
+
+        # Guardar en fichero si se especificó directorio de salida
+        if output_dir:
+            nombre_seg = re.sub(r"[^a-zA-Z0-9._-]", "_", nombre_cont)
+            ruta = Path(output_dir) / f"sbom-{nombre_seg}.json"
+            try:
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
+                ruta.write_text(
+                    json.dumps(sbom, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
+
+        return sbom
 
 
 # ---------------------------------------------------------------------------
