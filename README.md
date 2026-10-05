@@ -6,6 +6,7 @@
   <img src="https://img.shields.io/badge/platform-linux%20%7C%20macOS%20%7C%20windows-lightgrey" alt="Platform"/>
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License MIT"/>
   <img src="https://img.shields.io/badge/VampSecure-Labs-magenta" alt="VampSecure Labs"/>
+  <img src="https://github.com/Vampsecure-Labs/vamp-docker-audit/actions/workflows/ci.yml/badge.svg" alt="CI"/>
 </p>
 
 ## Overview
