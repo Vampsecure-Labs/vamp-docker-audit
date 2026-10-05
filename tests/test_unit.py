@@ -10,10 +10,8 @@ Cubre el motor de análisis sin necesitar un daemon Docker activo:
 - Validación de la estructura CycloneDX del SBOM generado
 """
 
-import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -24,11 +22,10 @@ from vamp_docker_audit import (
     LAYER_SECRET_PATTERNS,
     SECRET_VAR_PATTERNS,
     ContainerAuditResult,
-    DockerAuditResult,
     DockerAuditor,
+    DockerAuditResult,
     Finding,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers de construcción

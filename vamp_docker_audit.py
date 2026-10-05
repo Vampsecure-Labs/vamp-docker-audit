@@ -94,7 +94,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
-from typing import List, Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -103,6 +102,8 @@ from rich.text import Text
 
 from vampsec_report import (
     Finding as VSLFinding,
+)
+from vampsec_report import (
     VampSecReport,
     add_report_args,
     meta_from_args,
@@ -294,7 +295,7 @@ class ContainerAuditResult:
     container_name: str
     image:          str
     status:         str
-    findings:       List[Finding] = field(default_factory=list)
+    findings:       list[Finding] = field(default_factory=list)
 
     @property
     def max_severity(self) -> str:
@@ -325,16 +326,16 @@ class DockerAuditResult:
     """
     host:             str
     docker_version:   str
-    containers:       List[ContainerAuditResult] = field(default_factory=list)
-    image_findings:   List[Finding] = field(default_factory=list)
-    network_findings: List[Finding] = field(default_factory=list)
-    env_findings:     List[Finding] = field(default_factory=list)
-    error:            Optional[str] = None
+    containers:       list[ContainerAuditResult] = field(default_factory=list)
+    image_findings:   list[Finding] = field(default_factory=list)
+    network_findings: list[Finding] = field(default_factory=list)
+    env_findings:     list[Finding] = field(default_factory=list)
+    error:            str | None = None
 
     @property
-    def all_findings(self) -> List[Finding]:
+    def all_findings(self) -> list[Finding]:
         """Todos los hallazgos del entorno, ordenados por severidad."""
-        found: List[Finding] = []
+        found: list[Finding] = []
         for c in self.containers:
             found.extend(c.findings)
         found.extend(self.image_findings)
@@ -386,13 +387,13 @@ def _docker(args: list[str], timeout: int = 30) -> tuple[bool, str, str]:
         return False, "", str(exc)
 
 
-def _docker_inspect(name: str) -> Optional[dict]:
+def _docker_inspect(name: str) -> dict | None:
     """
     Ejecuta `docker inspect` sobre un contenedor y devuelve el objeto JSON.
 
     Retorna None si el inspect falla o el JSON no puede parsearse.
     """
-    ok, stdout, stderr = _docker(["inspect", name])
+    ok, stdout, _stderr = _docker(["inspect", name])
     if not ok or not stdout:
         return None
     try:
@@ -432,7 +433,7 @@ class DockerAuditor:
         socket_path: str = "/var/run/docker.sock",
         include_stopped: bool = False,
         scan_env: bool = True,
-        target_names: Optional[list[str]] = None,
+        target_names: list[str] | None = None,
     ) -> None:
         self._socket_path    = socket_path
         self._include_stopped = include_stopped
@@ -493,7 +494,7 @@ class DockerAuditor:
 
     # ── Fase 0: entorno Docker ─────────────────────────────────────────────
 
-    def _phase0_entorno(self, resultado: DockerAuditResult) -> Optional[str]:
+    def _phase0_entorno(self, resultado: DockerAuditResult) -> str | None:
         """
         Verifica la instalación y accesibilidad del daemon Docker.
         Comprueba permisos del socket Unix.
@@ -775,7 +776,7 @@ class DockerAuditor:
                     "servicio que arranque el contenedor escucha directamente en "
                     "la interfaz del host, eliminando el aislamiento de red."
                 ),
-                evidence=f"NetworkMode: host",
+                evidence="NetworkMode: host",
                 remediation=(
                     "Usar redes de bridge con mapeo de puertos explícito:\n"
                     "  docker run -p 127.0.0.1:8080:8080 ...\n"
@@ -831,7 +832,7 @@ class DockerAuditor:
                     "señales a todos los procesos del host. Esto puede facilitar "
                     "ataques de espionaje o terminación de procesos del host."
                 ),
-                evidence=f"PidMode: host",
+                evidence="PidMode: host",
                 remediation=(
                     "Eliminar --pid=host del comando docker run o del Compose:\n"
                     "  # Eliminar: pid: host\n"
@@ -856,7 +857,7 @@ class DockerAuditor:
                     "compartida del host. Un proceso dentro del contenedor puede "
                     "leer memoria compartida de otros procesos del host."
                 ),
-                evidence=f"IpcMode: host",
+                evidence="IpcMode: host",
                 remediation=(
                     "Eliminar --ipc=host. Usar el IPC namespace por defecto.\n"
                     "Si dos contenedores necesitan IPC compartido, usar:\n"
@@ -1064,7 +1065,7 @@ class DockerAuditor:
             imagen, created_str, img_id = partes
 
             # Etiqueta :latest — sin fijación de versión
-            if imagen.endswith(":latest") or imagen.endswith(":<none>"):
+            if imagen.endswith((":latest", ":<none>")):
                 self._counter += 1
                 resultado.image_findings.append(Finding(
                     id=f"DOCK-{self._counter:03d}",
@@ -1146,7 +1147,7 @@ class DockerAuditor:
             partes = line.split("|", 2)
             if len(partes) < 3:
                 continue
-            net_id, net_name, driver = partes
+            _net_id, net_name, driver = partes
 
             if driver == "host":
                 redes_host.append(net_name)
@@ -1514,7 +1515,7 @@ class DockerAuditor:
                     ),
                 ))
 
-    def _get_runc_version(self) -> Optional[str]:
+    def _get_runc_version(self) -> str | None:
         """
         Obtiene la versión semántica de runc del sistema.
 
@@ -1541,7 +1542,7 @@ class DockerAuditor:
 
         # Fallback: docker info devuelve el hash de commit de runc, no la versión
         # Solo lo intentamos para documentación; no sirve para comparación semántica
-        ok, stdout, _ = _docker(
+        _ok, _stdout, _ = _docker(
             ["info", "--format", "{{.RuncCommit.ID}}"]
         )
         # Si docker info reporta un commit hash válido pero no tenemos versión,
@@ -1695,7 +1696,7 @@ class DockerAuditor:
     def _generate_sbom(
         self,
         container_id_or_name: str,
-        output_dir: Optional[str] = None,
+        output_dir: str | None = None,
     ) -> dict:
         """
         Genera un SBOM CycloneDX 1.4 para un contenedor específico (v1.3).
@@ -1782,8 +1783,8 @@ class DockerAuditor:
             ok_dpkg, stdout_dpkg, _ = _docker(
                 ["run", "--rm", "--entrypoint", "", imagen,
                  "sh", "-c",
-                 "awk '/^Package:/{p=$2} /^Version:/{print p,$2}' "
-                 "/var/lib/dpkg/status 2>/dev/null | head -200"],
+                 ("awk '/^Package:/{p=$2} /^Version:/{print p,$2}' "
+                 "/var/lib/dpkg/status 2>/dev/null | head -200")],
                 timeout=20,
             )
             if ok_dpkg and stdout_dpkg:
@@ -1944,7 +1945,7 @@ class DockerReporter:
     def print_extra_findings(
         self,
         titulo: str,
-        findings: List[Finding],
+        findings: list[Finding],
     ) -> None:
         """Muestra hallazgos de imágenes, redes o ENV en un panel dedicado."""
         if not findings:
@@ -2101,7 +2102,7 @@ class DockerReporter:
 
         generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-        def _findings_table(findings: List[Finding]) -> str:
+        def _findings_table(findings: list[Finding]) -> str:
             if not findings:
                 return '<p class="good">Sin hallazgos</p>'
             rows = ""
@@ -2146,7 +2147,7 @@ class DockerReporter:
             </div>"""
 
         # Hallazgos globales (entorno, imágenes, redes, ENV)
-        hallazgos_globales: List[Finding] = (
+        hallazgos_globales: list[Finding] = (
             resultado.image_findings
             + resultado.network_findings
             + resultado.env_findings
@@ -2278,7 +2279,7 @@ footer {{ margin-top: 32px; text-align: center;
 # Conversión al formato de informe unificado VSL
 # ---------------------------------------------------------------------------
 
-def _findings_vsl(resultado: DockerAuditResult) -> List[VSLFinding]:
+def _findings_vsl(resultado: DockerAuditResult) -> list[VSLFinding]:
     """
     Convierte los hallazgos Docker al formato Finding unificado de VampSecure Labs.
 
@@ -2294,7 +2295,7 @@ def _findings_vsl(resultado: DockerAuditResult) -> List[VSLFinding]:
     List[VSLFinding] — Lista de hallazgos en formato VSL con prefijo DOCK-NNN
     """
     INCLUIDOS = {"CRITICAL", "HIGH", "MEDIUM"}
-    hallazgos: List[VSLFinding] = []
+    hallazgos: list[VSLFinding] = []
 
     for f in resultado.all_findings:
         if f.severity not in INCLUIDOS:
@@ -2461,8 +2462,8 @@ def _sbom_para_imagen(image_name: str) -> dict:
 
 def _generar_sboms(
     resultado:  DockerAuditResult,
-    sbom_file:  Optional[str],
-    sbom_dir:   Optional[str],
+    sbom_file:  str | None,
+    sbom_dir:   str | None,
     cons:       Console,
 ) -> None:
     """
@@ -2601,7 +2602,7 @@ def main() -> None:
     args = _parse_args()
 
     # Parsear nombres de contenedores objetivo
-    target_names: Optional[list[str]] = None
+    target_names: list[str] | None = None
     if args.containers:
         target_names = [n.strip() for n in args.containers.split(",") if n.strip()]
 

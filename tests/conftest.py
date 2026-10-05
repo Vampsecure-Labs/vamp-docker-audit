@@ -3,7 +3,6 @@
 conftest.py — Fixtures compartidas para las suites de test de vamp-docker-audit.
 """
 
-import json
 import shutil
 import sys
 from pathlib import Path

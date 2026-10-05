@@ -10,7 +10,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -82,13 +82,7 @@ class TestAuditContenedorPrivilegiadoMock:
                 mock_result.stdout = ps_output
             elif "inspect" in cmd:
                 mock_result.stdout = insp_output
-            elif "images" in cmd:
-                mock_result.stdout = ""
-            elif "network" in cmd:
-                mock_result.stdout = ""
-            elif "volume" in cmd:
-                mock_result.stdout = ""
-            elif "history" in cmd:
+            elif "images" in cmd or "network" in cmd or "volume" in cmd or "history" in cmd:
                 mock_result.stdout = ""
             else:
                 mock_result.stdout = ""
@@ -116,7 +110,7 @@ class TestDockerHelper:
     def test_docker_no_encontrado_retorna_false(self):
         """Si docker no está en PATH, _docker retorna (False, '', mensaje)."""
         with patch("subprocess.run", side_effect=FileNotFoundError):
-            ok, stdout, stderr = _docker(["ps"])
+            ok, _stdout, stderr = _docker(["ps"])
         assert ok is False
         assert "no encontrado" in stderr.lower() or "not found" in stderr.lower()
 
@@ -124,7 +118,7 @@ class TestDockerHelper:
         """Si docker supera el timeout, _docker retorna False."""
         import subprocess
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(["docker"], 30)):
-            ok, stdout, stderr = _docker(["ps"])
+            ok, _stdout, _stderr = _docker(["ps"])
         assert ok is False
 
 
