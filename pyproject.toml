@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vamp-docker-audit"
-version = "1.4"
-description = "Docker/container security auditor for authorized assessments, with delta scan"
+version = "1.5.0"
+description = "Docker/container security auditor for authorized assessments, with delta scan · librería importable"
 readme = "README.md"
 license = { text = "AGPL-3.0-only" }
 requires-python = ">=3.9"
@@ -33,4 +33,5 @@ Homepage = "https://github.com/Vampsecure-Labs/vamp-docker-audit"
 Repository = "https://github.com/Vampsecure-Labs/vamp-docker-audit"
 
 [tool.setuptools]
-py-modules = ["vamp_docker_audit", "vampsec_report"]
+packages = ["vamp_docker_audit"]
+py-modules = ["vampsec_report"]

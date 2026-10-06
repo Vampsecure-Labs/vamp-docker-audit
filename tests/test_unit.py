@@ -441,6 +441,6 @@ class TestDeltaScan:
         finally:
             sys.argv = old_argv
 
-    def test_version_es_14(self):
+    def test_version_es_150(self):
         from vamp_docker_audit import VERSION
-        assert VERSION == "1.4"
+        assert VERSION == "1.5.0"

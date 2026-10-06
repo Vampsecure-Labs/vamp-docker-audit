@@ -193,7 +193,7 @@ class TestLayerSecretsMock:
         """La fase 6 detecta secreto AWS en historial de imagen mockeado."""
         # El historial contiene una AWS Access Key
         history_output = (
-            "/bin/sh -c export AWS_ACCESS_KEY_ID=TESTKEY_FAKE_FOR_UNIT_TEST "
+            "/bin/sh -c export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE "
             "&& echo configurado"
         )
 
