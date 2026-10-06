@@ -413,3 +413,34 @@ class TestCapsPeligrosas:
             if "capacidad" in f.title.lower() or "cap" in f.title.lower()
         ]
         assert cap_findings, "CAP_SYS_PTRACE debe generar finding de capacidades"
+
+
+class TestDeltaScan:
+    """Tests para --delta FILE (delta scan, v1.4)."""
+
+    def test_apply_delta_scan_sin_contenedores(self, tmp_path):
+        import json
+        from vamp_docker_audit import apply_delta_scan, DockerAuditResult
+        baseline = {"containers": [], "image_findings": [], "network_findings": [], "env_findings": []}
+        bp = tmp_path / "baseline.json"
+        bp.write_text(json.dumps(baseline))
+        resultado = DockerAuditResult(host="localhost", docker_version="24.0")
+        new_keys, recurring_keys, resolved_keys = apply_delta_scan(resultado, str(bp))
+        assert len(new_keys) == 0
+        assert len(recurring_keys) == 0
+        assert len(resolved_keys) == 0
+
+    def test_argparser_acepta_delta(self):
+        import sys
+        from vamp_docker_audit import _parse_args
+        old_argv = sys.argv
+        sys.argv = ["vamp-docker-audit", "--delta", "prev.json"]
+        try:
+            args = _parse_args()
+            assert args.delta == "prev.json"
+        finally:
+            sys.argv = old_argv
+
+    def test_version_es_14(self):
+        from vamp_docker_audit import VERSION
+        assert VERSION == "1.4"

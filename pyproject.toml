@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vamp-docker-audit"
-version = "1.3"
-description = "Docker/container security auditor for authorized assessments"
+version = "1.4"
+description = "Docker/container security auditor for authorized assessments, with delta scan"
 readme = "README.md"
 license = { text = "AGPL-3.0-only" }
 requires-python = ">=3.9"

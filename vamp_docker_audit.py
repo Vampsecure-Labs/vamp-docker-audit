@@ -109,7 +109,7 @@ from vampsec_report import (
     meta_from_args,
 )
 
-VERSION   = "1.3"
+VERSION   = "1.4"
 TOOL_NAME = "vamp-docker-audit"
 
 console = Console()
@@ -2531,6 +2531,43 @@ def _generar_sboms(
 # CLI
 # ---------------------------------------------------------------------------
 
+def apply_delta_scan(
+    resultado: "DockerAuditResult", delta_path: str
+) -> "tuple[set, set, set]":
+    """
+    Compara hallazgos actuales con un informe JSON previo (--delta FILE).
+    Clave única: f"{container}:{id}" para findings de contenedores;
+                 f"__env__:{id}" para ENV findings;
+                 f"__image__:{id}" para hallazgos de imagen.
+    Devuelve (new_keys, recurring_keys, resolved_keys).
+    """
+    try:
+        baseline_data = json.loads(Path(delta_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"No se puede leer el delta baseline '{delta_path}': {exc}") from exc
+
+    baseline_keys: set = set()
+    for bc in baseline_data.get("containers", []):
+        cname = bc.get("name", bc.get("id", "?"))
+        for bf in bc.get("findings", []):
+            baseline_keys.add(f"{cname}:{bf.get('id','?')}")
+    for bf in baseline_data.get("image_findings", []) + baseline_data.get("network_findings", []):
+        baseline_keys.add(f"__image__:{bf.get('id','?')}")
+    for bf in baseline_data.get("env_findings", []):
+        baseline_keys.add(f"__env__:{bf.get('id','?')}")
+
+    current_keys: set = set()
+    for car in resultado.containers:
+        for f in car.findings:
+            current_keys.add(f"{car.container_name}:{f.id}")
+    for f in resultado.image_findings + resultado.network_findings:
+        current_keys.add(f"__image__:{f.id}")
+    for f in resultado.env_findings:
+        current_keys.add(f"__env__:{f.id}")
+
+    return current_keys - baseline_keys, current_keys & baseline_keys, baseline_keys - current_keys
+
+
 def _parse_args() -> argparse.Namespace:
     """Parsea los argumentos de la línea de comandos."""
     p = argparse.ArgumentParser(
@@ -2587,6 +2624,12 @@ def _parse_args() -> argparse.Namespace:
             "Generar un SBOM CycloneDX 1.4 por imagen auditada y guardarlos "
             "en DIR (un fichero .sbom.json por imagen)"
         ),
+    )
+
+    p.add_argument(
+        "--delta", metavar="FILE",
+        help="Delta scan: comparar con un informe JSON previo (--json). "
+             "Muestra hallazgos como NEW/RECURRING y lista los RESOLVED.",
     )
 
     # Argumentos de informe unificado VSL
@@ -2655,6 +2698,22 @@ def main() -> None:
     # Tabla resumen global
     if resultado.containers:
         reporter.print_summary(resultado)
+
+    # ── Delta scan (--delta) ─────────────────────────────────────────────────
+    if getattr(args, "delta", None):
+        try:
+            new_keys, recurring_keys, resolved_keys = apply_delta_scan(resultado, args.delta)
+            console.print(
+                f"\n[bold cyan]  DELTA vs {args.delta}:[/] "
+                f"[bold green]{len(new_keys)} NEW[/] · [yellow]{len(recurring_keys)} RECURRING[/] · "
+                f"[dim]{len(resolved_keys)} RESOLVED[/]"
+            )
+            for k in sorted(new_keys):
+                console.print(f"[dim]  [+NEW     ] {k}[/]")
+            for k in sorted(resolved_keys):
+                console.print(f"[dim]  [-RESOLVED] {k}[/]")
+        except ValueError as exc:
+            console.print(f"[bold red]  [!] Delta error: {exc}[/]")
 
     # Exportar JSON
     if args.json:
