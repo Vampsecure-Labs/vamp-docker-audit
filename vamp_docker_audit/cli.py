@@ -12,7 +12,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from ._models import VERSION, TOOL_NAME
+from ._models import VERSION, TOOL_NAME, DockerAuditResult
 from ._core import DockerAuditor, _sbom_para_imagen, apply_delta_scan
 from ._report import DockerReporter, _findings_vsl
 from vampsec_report import VampSecReport, add_report_args, meta_from_args

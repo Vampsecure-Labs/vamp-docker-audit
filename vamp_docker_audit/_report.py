@@ -26,11 +26,6 @@ from ._models import (
 from vampsec_report import (
     Finding as VSLFinding,
 )
-from vampsec_report import (
-    VampSecReport,
-    add_report_args,
-    meta_from_args,
-)
 
 
 class DockerReporter:
