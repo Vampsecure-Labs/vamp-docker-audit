@@ -133,6 +133,89 @@ python3 vamp_docker_audit.py \
 | `1` | High-severity findings detected | Pipeline fails — review required |
 | `2` | Critical-severity findings detected | Pipeline fails — immediate action required |
 
+## Sample Output
+
+```
+$ python3 vamp_docker_audit.py --containers web,api,db,cache
+
+ vamp-docker-audit v1.3 — VampSecure Labs
+ Docker socket: /var/run/docker.sock  ✓ Accessible
+ Containers targeted: 4  |  Running: 4  |  Stopped: 0
+
+╭─────────────────────────────────── web ────────────────────────────────────╮
+│ Image: nginx:latest   User: root   Network: bridge                         │
+│                                                                             │
+│ [CRITICAL] DOCK-001 Container runs in privileged mode                      │
+│ [HIGH]     DOCK-003 Container runs as root (UID 0)                         │
+│ [HIGH]     DOCK-010 Port 80 bound to 0.0.0.0 — exposed on all interfaces  │
+│ [LOW]      DOCK-IMG-001 Image tagged :latest — pinned digest recommended   │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+╭─────────────────────────────────── api ────────────────────────────────────╮
+│ Image: myapp-api:2.4.1   User: appuser(1001)   Network: app-net            │
+│                                                                             │
+│ [HIGH]   DOCK-ENV-001 ENV SECRET_KEY=sk_live_••••• — live credential       │
+│ [MEDIUM] DOCK-ENV-003 ENV DATABASE_URL — connection string detected        │
+│ [INFO]   DOCK-007 No healthcheck configured                                 │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+╭─────────────────────────────────── db ─────────────────────────────────────╮
+│ Image: postgres:15   User: postgres(999)   Network: app-net                │
+│                                                                             │
+│ [CRITICAL] DOCK-004 Docker socket /var/run/docker.sock mounted in container│
+│ [MEDIUM]   DOCK-006 Sensitive bind mount: /etc → /host-etc (read-write)    │
+│ [INFO]     DOCK-008 Unlimited restart policy — consider max-retries        │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+╭─────────────────────────────────── cache ──────────────────────────────────╮
+│ Image: redis:7-alpine   User: redis(999)   Network: host                   │
+│                                                                             │
+│ [HIGH] DOCK-005 host network mode — container shares host network stack    │
+│ [HIGH] DOCK-002 Dangerous capability: CAP_NET_ADMIN granted                │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+ Summary: 2 CRITICAL  ·  5 HIGH  ·  2 MEDIUM  ·  1 LOW  ·  2 INFO
+ Exit code: 2 (CRITICAL findings — immediate action required)
+```
+
+## Why vamp-docker-audit vs. Trivy (misconfig) · Hadolint · Docker Bench for Security
+
+| Capability | vamp-docker-audit | Trivy misconfig | Hadolint | Docker Bench |
+|---|---|---|---|---|
+| Inspects running containers (live ENV vars) | ✅ | ❌ | ❌ | ✅ |
+| Secret pattern scanning in ENV values | ✅ | ⚠️ partial | ❌ | ❌ |
+| CIS Docker Benchmark aligned (DOCK-NNN IDs) | ✅ | ✅ | ⚠️ partial | ✅ |
+| VSL engagement report (HTML + PDF) | ✅ | ❌ | ❌ | ❌ |
+| Selective container targeting | ✅ | ❌ | ❌ | ❌ |
+| Machine-readable JSON + CI/CD exit codes | ✅ | ✅ | ✅ | ⚠️ partial |
+| No SDK or Docker daemon API dependency | ✅ | ❌ | ❌ | ❌ |
+| Delta comparison — new findings only (`--delta`) | ✅ | ❌ | ❌ | ❌ |
+
+- **Live runtime focus**: checks what is actually running in production, not the Dockerfile. A hardened image can still launch a privileged container; only live inspection catches it.
+- **Secret density in ENV**: scanning variable names *and* value patterns (Stripe, GitHub PAT, Slack tokens, AWS AKIA keys, JWTs) catches credentials that misconfig scanners overlook.
+- **Engagement-ready output**: `--report-html` / `--report-pdf` generate a client-deliverable report with client name, auditor, and scope — no post-processing required.
+- **Delta mode**: `--delta FILE` surfaces only findings that are *new* since the last run, making it suitable for scheduled CI gates without alert fatigue.
+
+## Check Coverage
+
+| Check ID | Description | Standard | Severity |
+|---|---|---|---|
+| DOCK-001 | Container running in privileged mode | CIS DK Benchmark 5.4 | CRITICAL |
+| DOCK-002 | Dangerous Linux capabilities granted (CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_SYS_PTRACE) | CIS DK Benchmark 5.3 | HIGH |
+| DOCK-003 | Container process running as root (UID 0) | CIS DK Benchmark 4.1 | MEDIUM |
+| DOCK-004 | Docker socket mounted inside container (/var/run/docker.sock) | CIS DK Benchmark 5.31 | CRITICAL |
+| DOCK-005 | Host network mode — container shares host network stack | CIS DK Benchmark 5.15, NIST SP 800-190 §4.3 | HIGH |
+| DOCK-006 | Sensitive bind mount (/etc, /proc, /sys, /root, /home) | CIS DK Benchmark 5.12 | MEDIUM |
+| DOCK-007 | No HEALTHCHECK configured | CIS DK Benchmark 4.6 | INFO |
+| DOCK-008 | Unlimited restart policy (always/unless-stopped without max-retries) | CIS DK Benchmark 5.14 | INFO |
+| DOCK-009 | Host PID namespace shared (--pid=host) | CIS DK Benchmark 5.16 | HIGH |
+| DOCK-010 | Port bound to 0.0.0.0 — exposed on all interfaces | NIST SP 800-190 §4.3 | LOW |
+| DOCK-ENV-001 | ENV variable name matches secret pattern (SECRET, TOKEN, API_KEY, PRIVATE…) | CIS DK Benchmark 4.4 | HIGH |
+| DOCK-ENV-002 | ENV variable value matches credential pattern (sk_, ghp_, AKIA, ey…) | CIS DK Benchmark 4.4 | HIGH |
+| DOCK-ENV-003 | Connection string in ENV (DATABASE_URL, MONGO_URL, REDIS_URL) | CIS DK Benchmark 4.4 | MEDIUM |
+| DOCK-IMG-001 | Image tagged :latest or \<none\> — unpinned digest | CIS DK Benchmark 4.1 | LOW |
+| DOCK-IMG-002 | Image older than 90 days — may contain unpatched CVEs | NIST SP 800-190 §4.1 | INFO |
+
 ## Legal Notice
 
 Use exclusively on systems you own or for which you hold explicit written authorization from the system owner. VampSecure Studios assumes no liability for unauthorized use.
