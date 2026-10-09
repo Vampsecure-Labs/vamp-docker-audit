@@ -9,11 +9,20 @@
   <img src="https://github.com/Vampsecure-Labs/vamp-docker-audit/actions/workflows/ci.yml/badge.svg" alt="CI"/>
 </p>
 
-## Overview
+**VampSecure Labs · Security Research Division**
+
+> 🇬🇧 [English](#english) · 🇪🇸 [Español](#español)
+
+---
+
+<a name="english"></a>
+## 🇬🇧 English
 
 `vamp-docker-audit` is a CIS Docker Benchmark-aligned security auditor that inspects running Docker containers, their environment variables, images, networks, and volumes for misconfigurations and credential exposure. It operates entirely through the Docker CLI — no SDK dependency — making it portable across any Docker-capable host. A multi-phase architecture covers daemon access verification, per-container security checks, secret detection in environment variables, image freshness, and network driver analysis, with findings rated CRITICAL to INFO and exported to Console, JSON, or HTML.
 
-## Features
+---
+
+### Features
 
 - Phase 0: daemon access verification and Docker socket permission check (`/var/run/docker.sock` ownership and mode)
 - Container checks (DOCK-001 to DOCK-010): privileged mode (CRITICAL), dangerous Linux capabilities including `CAP_SYS_ADMIN`, `CAP_NET_ADMIN`, `CAP_SYS_PTRACE` (HIGH), root user inside container (MEDIUM), Docker socket mounted inside container (CRITICAL), host network mode (HIGH), sensitive bind mounts (`/etc`, `/var/run`, `/proc`, `/sys`, `/root`, `/home`) (MEDIUM), host PID namespace (HIGH), host IPC namespace (MEDIUM), unlimited restart policy (INFO), ports bound to `0.0.0.0` (LOW)
@@ -27,31 +36,36 @@
 - Custom Docker socket path via `--socket`
 - Export to Console (Rich per-container panels), JSON, and HTML (dark-theme)
 
-## Requirements
+---
+
+### Requirements
 
 - Python 3.9 or later
 - `rich >= 13.7.0`
 - Docker CLI in `PATH` and a running Docker daemon
 - Optional: `fpdf2 >= 2.7` for `--report-pdf`
 
-## Installation
+---
 
+### Installation
 
 ```bash
 pip install vamp-docker-audit
-# o con Homebrew:
+# or with Homebrew:
 brew install vampsecure-labs/labs/vamp-docker-audit
 ```
 
 ```bash
-git clone https://github.com/belky-me/vamp-docker-audit.git
+git clone https://github.com/Vampsecure-Labs/vamp-docker-audit.git
 cd vamp-docker-audit
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Usage
+---
+
+### Usage
 
 ```
 python3 vamp_docker_audit.py --help
@@ -71,7 +85,9 @@ usage: vamp_docker_audit.py [-h]
 vamp-docker-audit — Docker Security Auditor (VampSecure Labs)
 ```
 
-## Examples
+---
+
+### Examples
 
 ```bash
 # Audit all running containers on the local host
@@ -98,7 +114,9 @@ python3 vamp_docker_audit.py \
     --auditor "J. Smith" --report-html client_report.html --report-pdf client_report.pdf
 ```
 
-## CLI Reference
+---
+
+### CLI Reference
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -115,7 +133,9 @@ python3 vamp_docker_audit.py \
 | `--report-html FILE` | — | Export unified VSL client report (HTML) |
 | `--report-pdf FILE` | — | Export unified VSL client report (PDF, requires fpdf2) |
 
-## Output Formats
+---
+
+### Output Formats
 
 | Format | Flag | Description |
 |--------|------|-------------|
@@ -125,7 +145,9 @@ python3 vamp_docker_audit.py \
 | Client HTML | `--report-html FILE` | Unified VampSecure Labs engagement report |
 | Client PDF | `--report-pdf FILE` | PDF version of the VSL client report |
 
-## Exit Codes
+---
+
+### Exit Codes
 
 | Code | Meaning | CI/CD Behavior |
 |------|---------|----------------|
@@ -133,12 +155,14 @@ python3 vamp_docker_audit.py \
 | `1` | High-severity findings detected | Pipeline fails — review required |
 | `2` | Critical-severity findings detected | Pipeline fails — immediate action required |
 
-## Sample Output
+---
+
+### Sample Output
 
 ```
 $ python3 vamp_docker_audit.py --containers web,api,db,cache
 
- vamp-docker-audit v1.3 — VampSecure Labs
+ vamp-docker-audit v1.6 — VampSecure Labs
  Docker socket: /var/run/docker.sock  ✓ Accessible
  Containers targeted: 4  |  Running: 4  |  Stopped: 0
 
@@ -178,7 +202,9 @@ $ python3 vamp_docker_audit.py --containers web,api,db,cache
  Exit code: 2 (CRITICAL findings — immediate action required)
 ```
 
-## Why vamp-docker-audit vs. Trivy (misconfig) · Hadolint · Docker Bench for Security
+---
+
+### Why vamp-docker-audit vs. Trivy (misconfig) · Hadolint · Docker Bench for Security
 
 | Capability | vamp-docker-audit | Trivy misconfig | Hadolint | Docker Bench |
 |---|---|---|---|---|
@@ -196,7 +222,9 @@ $ python3 vamp_docker_audit.py --containers web,api,db,cache
 - **Engagement-ready output**: `--report-html` / `--report-pdf` generate a client-deliverable report with client name, auditor, and scope — no post-processing required.
 - **Delta mode**: `--delta FILE` surfaces only findings that are *new* since the last run, making it suitable for scheduled CI gates without alert fatigue.
 
-## Check Coverage
+---
+
+### Check Coverage
 
 | Check ID | Description | Standard | Severity |
 |---|---|---|---|
@@ -216,20 +244,294 @@ $ python3 vamp_docker_audit.py --containers web,api,db,cache
 | DOCK-IMG-001 | Image tagged :latest or \<none\> — unpinned digest | CIS DK Benchmark 4.1 | LOW |
 | DOCK-IMG-002 | Image older than 90 days — may contain unpatched CVEs | NIST SP 800-190 §4.1 | INFO |
 
-## Legal Notice
+---
+
+### Legal Notice
 
 Use exclusively on systems you own or for which you hold explicit written authorization from the system owner. VampSecure Studios assumes no liability for unauthorized use.
 
-## Part of VampSecure Labs Toolkit
+---
+
+### Part of VampSecure Labs Toolkit
 
 `vamp-docker-audit` is one tool in the VampSecure Labs security research toolkit. For the full toolkit including the orchestrator that runs all tools in sequence and aggregates findings into a single engagement report, see:
 
-- Portfolio: [github.com/belky-me](https://github.com/belky-me)
-- Orchestrator: [github.com/belky-me/vamp-orchestrator](https://github.com/belky-me/vamp-orchestrator)
+- Portfolio: [github.com/Vampsecure-Labs](https://github.com/Vampsecure-Labs)
+- Orchestrator: [github.com/Vampsecure-Labs/vamp-orchestrator](https://github.com/Vampsecure-Labs/vamp-orchestrator)
+
+---
+
+### Version History
+
+| Version | Main changes |
+|---------|-------------|
+| v1.6 | Bilingual README (EN/ES) |
+| v1.5.0 | Modularización lib+cli |
+| v1.4 | Delta scan universal |
+| v1.3 | VSL client engagement report (HTML + PDF), delta mode (`--delta`) |
 
 ---
 
 © VampSecure Studios — VampSecure Labs Security Research Division
 
-## Versión
-v1.3 — VampSecure Labs Security Research Division
+---
+---
+
+<a name="español"></a>
+## 🇪🇸 Español
+
+`vamp-docker-audit` es un auditor de seguridad alineado con el CIS Docker Benchmark que inspecciona contenedores Docker en ejecución, sus variables de entorno, imágenes, redes y volúmenes en busca de configuraciones incorrectas y exposición de credenciales. Opera completamente a través de la CLI de Docker — sin dependencia del SDK — lo que lo hace portable en cualquier host con Docker. Una arquitectura multi-fase cubre la verificación de acceso al daemon, comprobaciones de seguridad por contenedor, detección de secretos en variables de entorno, frescura de imágenes y análisis de drivers de red, con hallazgos clasificados de CRITICAL a INFO y exportados a consola, JSON o HTML.
+
+---
+
+### Características
+
+- Fase 0: verificación de acceso al daemon y comprobación de permisos del socket Docker (`/var/run/docker.sock` — propietario y modo)
+- Comprobaciones de contenedor (DOCK-001 a DOCK-010): modo privilegiado (CRITICAL), capacidades Linux peligrosas incluyendo `CAP_SYS_ADMIN`, `CAP_NET_ADMIN`, `CAP_SYS_PTRACE` (HIGH), usuario root dentro del contenedor (MEDIUM), socket Docker montado dentro del contenedor (CRITICAL), modo host network (HIGH), bind mounts sensibles (`/etc`, `/var/run`, `/proc`, `/sys`, `/root`, `/home`) (MEDIUM), namespace PID del host (HIGH), namespace IPC del host (MEDIUM), política de reinicio ilimitada (INFO), puertos ligados a `0.0.0.0` (LOW)
+- Escaneo de secretos en variables de entorno: nombres de variable que coinciden con `PASSWORD`, `PASSWD`, `SECRET`, `TOKEN`, `KEY`, `API_KEY`, `APIKEY`, `PRIVATE`, `CREDENTIALS`, `AUTH`, `DSN` (HIGH); patrones de valor para `sk_`/`pk_`, `ghp_`, `glpat-`, `xox[bpoa]-`, `Bearer`, `AKIA...`, `ey...`, blobs codificados en base64 (HIGH); variables de cadena de conexión `DATABASE_URL`, `MONGO_URL`, `REDIS_URL` y variantes (MEDIUM)
+- Comprobaciones de imagen: etiqueta `:latest` o `<none>` (LOW), imágenes de más de 90 días (INFO)
+- Análisis de red: inventario de redes con driver host (INFO)
+- Inventario de volúmenes (INFO)
+- Selección de contenedores con `--containers` (nombres o IDs separados por comas) o escaneo de toda la flota
+- Inclusión de contenedores parados con `--include-stopped`
+- Omisión del escaneo ENV con `--no-env-scan` para entornos sensibles a la privacidad
+- Ruta de socket Docker personalizada vía `--socket`
+- Exportación a consola (paneles Rich por contenedor), JSON y HTML (dark-theme)
+
+---
+
+### Requisitos
+
+- Python 3.9 o posterior
+- `rich >= 13.7.0`
+- CLI de Docker en `PATH` y un daemon Docker en ejecución
+- Opcional: `fpdf2 >= 2.7` para `--report-pdf`
+
+---
+
+### Instalación
+
+```bash
+pip install vamp-docker-audit
+# o con Homebrew:
+brew install vampsecure-labs/labs/vamp-docker-audit
+```
+
+```bash
+git clone https://github.com/Vampsecure-Labs/vamp-docker-audit.git
+cd vamp-docker-audit
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+---
+
+### Uso
+
+```
+python3 vamp_docker_audit.py --help
+```
+
+```
+usage: vamp_docker_audit.py [-h]
+                             [--socket RUTA]
+                             [--containers NOMBRES]
+                             [--include-stopped]
+                             [--no-env-scan]
+                             [--json FICHERO] [--html FICHERO]
+                             [--client CLIENTE] [--engagement ENGAGEMENT]
+                             [--auditor AUDITOR] [--report-scope SCOPE]
+                             [--report-html FICHERO] [--report-pdf FICHERO]
+
+vamp-docker-audit — Docker Security Auditor (VampSecure Labs)
+```
+
+---
+
+### Ejemplos
+
+```bash
+# Auditar todos los contenedores en ejecución en el host local
+python3 vamp_docker_audit.py
+
+# Auditar contenedores específicos por nombre
+python3 vamp_docker_audit.py --containers web,api,db
+
+# Incluir contenedores parados en la auditoría
+python3 vamp_docker_audit.py --include-stopped
+
+# Auditar sin escaneo de secretos en variables ENV
+python3 vamp_docker_audit.py --no-env-scan
+
+# Usar un socket Docker no estándar (p.ej. Docker rootless)
+python3 vamp_docker_audit.py --socket /run/user/1000/docker.sock
+
+# Exportar hallazgos a JSON y HTML
+python3 vamp_docker_audit.py --json resultados.json --html informe.html
+
+# Generar informe de encargo listo para cliente (HTML + PDF)
+python3 vamp_docker_audit.py \
+    --client "Empresa SL" --engagement "Revisión de Seguridad de Contenedores Q3 2026" \
+    --auditor "J. García" --report-html informe_cliente.html --report-pdf informe_cliente.pdf
+```
+
+---
+
+### Referencia CLI
+
+| Flag | Por defecto | Descripción |
+|------|-------------|-------------|
+| `--socket RUTA` | `/var/run/docker.sock` | Ruta al socket Docker |
+| `--containers NOMBRES` | todos en ejecución | Nombres o IDs de contenedores separados por comas |
+| `--include-stopped` | off | Incluir contenedores parados en la auditoría |
+| `--no-env-scan` | off | Omitir escaneo de secretos en variables de entorno |
+| `--json FICHERO` | — | Exportar resultados a JSON |
+| `--html FICHERO` | — | Exportar informe HTML dark-theme |
+| `--client TEXTO` | — | Nombre del cliente para el informe de encargo VSL |
+| `--engagement TEXTO` | — | Título del encargo para el informe VSL |
+| `--auditor TEXTO` | — | Nombre del auditor para el informe VSL |
+| `--report-scope TEXTO` | — | Descripción del alcance para el informe VSL |
+| `--report-html FICHERO` | — | Exportar informe unificado VSL para cliente (HTML) |
+| `--report-pdf FICHERO` | — | Exportar informe unificado VSL para cliente (PDF, requiere fpdf2) |
+
+---
+
+### Formatos de salida
+
+| Formato | Flag | Descripción |
+|---------|------|-------------|
+| Consola | (por defecto) | Paneles Rich por contenedor con hallazgos coloreados por severidad |
+| JSON | `--json FICHERO` | Conjunto de resultados completo legible por máquina |
+| HTML | `--html FICHERO` | Informe standalone dark-theme |
+| HTML cliente | `--report-html FICHERO` | Informe unificado de encargo VampSecure Labs |
+| PDF cliente | `--report-pdf FICHERO` | Versión PDF del informe de encargo VSL |
+
+---
+
+### Exit codes
+
+| Código | Significado | Comportamiento CI/CD |
+|--------|-------------|----------------------|
+| `0` | Sin hallazgos críticos o de alta severidad | El pipeline pasa |
+| `1` | Hallazgos de alta severidad detectados | El pipeline falla — revisión requerida |
+| `2` | Hallazgos de severidad crítica detectados | El pipeline falla — acción inmediata requerida |
+
+---
+
+### Salida de ejemplo
+
+```
+$ python3 vamp_docker_audit.py --containers web,api,db,cache
+
+ vamp-docker-audit v1.6 — VampSecure Labs
+ Docker socket: /var/run/docker.sock  ✓ Accesible
+ Contenedores objetivo: 4  |  En ejecución: 4  |  Parados: 0
+
+╭─────────────────────────────────── web ────────────────────────────────────╮
+│ Image: nginx:latest   User: root   Network: bridge                         │
+│                                                                             │
+│ [CRITICAL] DOCK-001 Contenedor ejecutándose en modo privilegiado           │
+│ [HIGH]     DOCK-003 Contenedor ejecutándose como root (UID 0)              │
+│ [HIGH]     DOCK-010 Puerto 80 ligado a 0.0.0.0 — expuesto en todas las IF │
+│ [LOW]      DOCK-IMG-001 Imagen etiquetada :latest — se recomienda digest   │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+╭─────────────────────────────────── api ────────────────────────────────────╮
+│ Image: myapp-api:2.4.1   User: appuser(1001)   Network: app-net            │
+│                                                                             │
+│ [HIGH]   DOCK-ENV-001 ENV SECRET_KEY=sk_live_••••• — credencial en vivo   │
+│ [MEDIUM] DOCK-ENV-003 ENV DATABASE_URL — cadena de conexión detectada      │
+│ [INFO]   DOCK-007 Sin HEALTHCHECK configurado                               │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+╭─────────────────────────────────── db ─────────────────────────────────────╮
+│ Image: postgres:15   User: postgres(999)   Network: app-net                │
+│                                                                             │
+│ [CRITICAL] DOCK-004 Socket Docker /var/run/docker.sock montado en contenedor│
+│ [MEDIUM]   DOCK-006 Bind mount sensible: /etc → /host-etc (lectura-escritura)│
+│ [INFO]     DOCK-008 Política de reinicio ilimitada — considerar max-retries│
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+╭─────────────────────────────────── cache ──────────────────────────────────╮
+│ Image: redis:7-alpine   User: redis(999)   Network: host                   │
+│                                                                             │
+│ [HIGH] DOCK-005 Modo host network — el contenedor comparte la pila de red  │
+│ [HIGH] DOCK-002 Capacidad peligrosa: CAP_NET_ADMIN concedida               │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+ Resumen: 2 CRITICAL  ·  5 HIGH  ·  2 MEDIUM  ·  1 LOW  ·  2 INFO
+ Exit code: 2 (hallazgos CRITICAL — acción inmediata requerida)
+```
+
+---
+
+### Why vamp-docker-audit vs. Trivy (misconfig) · Hadolint · Docker Bench for Security
+
+| Capacidad | vamp-docker-audit | Trivy misconfig | Hadolint | Docker Bench |
+|---|---|---|---|---|
+| Inspecciona contenedores en ejecución (ENV vars en vivo) | ✅ | ❌ | ❌ | ✅ |
+| Escaneo de patrones de secretos en valores ENV | ✅ | ⚠️ parcial | ❌ | ❌ |
+| Alineado con CIS Docker Benchmark (IDs DOCK-NNN) | ✅ | ✅ | ⚠️ parcial | ✅ |
+| Informe de encargo VSL (HTML + PDF) | ✅ | ❌ | ❌ | ❌ |
+| Selección de contenedores específicos | ✅ | ❌ | ❌ | ❌ |
+| JSON legible por máquina + exit codes CI/CD | ✅ | ✅ | ✅ | ⚠️ parcial |
+| Sin dependencia del SDK ni de la API del daemon | ✅ | ❌ | ❌ | ❌ |
+| Comparación delta — solo nuevos hallazgos (`--delta`) | ✅ | ❌ | ❌ | ❌ |
+
+- **Enfoque en runtime en vivo**: comprueba lo que realmente está ejecutándose en producción, no el Dockerfile. Una imagen endurecida puede seguir lanzando un contenedor privilegiado; solo la inspección en vivo lo detecta.
+- **Densidad de secretos en ENV**: escanear nombres de variable *y* patrones de valor (Stripe, GitHub PAT, tokens de Slack, claves AWS AKIA, JWTs) detecta credenciales que los escáneres de misconfiguration pasan por alto.
+- **Salida lista para encargo**: `--report-html` / `--report-pdf` generan un informe entregable al cliente con nombre del cliente, auditor y alcance — sin postprocesado requerido.
+- **Modo delta**: `--delta FICHERO` muestra solo los hallazgos *nuevos* desde la última ejecución, haciéndolo adecuado para gates CI programados sin fatiga de alertas.
+
+---
+
+### Check Coverage
+
+| Check ID | Description | Standard | Severity |
+|---|---|---|---|
+| DOCK-001 | Container running in privileged mode | CIS DK Benchmark 5.4 | CRITICAL |
+| DOCK-002 | Dangerous Linux capabilities granted (CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_SYS_PTRACE) | CIS DK Benchmark 5.3 | HIGH |
+| DOCK-003 | Container process running as root (UID 0) | CIS DK Benchmark 4.1 | MEDIUM |
+| DOCK-004 | Docker socket mounted inside container (/var/run/docker.sock) | CIS DK Benchmark 5.31 | CRITICAL |
+| DOCK-005 | Host network mode — container shares host network stack | CIS DK Benchmark 5.15, NIST SP 800-190 §4.3 | HIGH |
+| DOCK-006 | Sensitive bind mount (/etc, /proc, /sys, /root, /home) | CIS DK Benchmark 5.12 | MEDIUM |
+| DOCK-007 | No HEALTHCHECK configured | CIS DK Benchmark 4.6 | INFO |
+| DOCK-008 | Unlimited restart policy (always/unless-stopped without max-retries) | CIS DK Benchmark 5.14 | INFO |
+| DOCK-009 | Host PID namespace shared (--pid=host) | CIS DK Benchmark 5.16 | HIGH |
+| DOCK-010 | Port bound to 0.0.0.0 — exposed on all interfaces | NIST SP 800-190 §4.3 | LOW |
+| DOCK-ENV-001 | ENV variable name matches secret pattern (SECRET, TOKEN, API_KEY, PRIVATE…) | CIS DK Benchmark 4.4 | HIGH |
+| DOCK-ENV-002 | ENV variable value matches credential pattern (sk_, ghp_, AKIA, ey…) | CIS DK Benchmark 4.4 | HIGH |
+| DOCK-ENV-003 | Connection string in ENV (DATABASE_URL, MONGO_URL, REDIS_URL) | CIS DK Benchmark 4.4 | MEDIUM |
+| DOCK-IMG-001 | Image tagged :latest or \<none\> — unpinned digest | CIS DK Benchmark 4.1 | LOW |
+| DOCK-IMG-002 | Image older than 90 days — may contain unpatched CVEs | NIST SP 800-190 §4.1 | INFO |
+
+---
+
+### Aviso legal
+
+Uso exclusivo en sistemas propios o para los que se dispone de autorización escrita explícita del titular del sistema. VampSecure Studios no asume responsabilidad por el uso no autorizado.
+
+---
+
+### Parte del toolkit VampSecure Labs
+
+`vamp-docker-audit` es una herramienta del toolkit de investigación de seguridad de VampSecure Labs. Para el toolkit completo incluyendo el orquestador que ejecuta todas las herramientas en secuencia y agrega los hallazgos en un único informe de encargo, ver:
+
+- Portfolio: [github.com/Vampsecure-Labs](https://github.com/Vampsecure-Labs)
+- Orquestador: [github.com/Vampsecure-Labs/vamp-orchestrator](https://github.com/Vampsecure-Labs/vamp-orchestrator)
+
+---
+
+### Historial de versiones
+
+| Versión | Cambios principales |
+|---------|---------------------|
+| v1.6 | README bilingüe (EN/ES) |
+| v1.5.0 | Modularización lib+cli |
+| v1.4 | Delta scan universal |
+| v1.3 | Informe de encargo VSL para cliente (HTML + PDF), modo delta (`--delta`) |
+
+---
+
+© VampSecure Studios — VampSecure Labs Security Research Division
