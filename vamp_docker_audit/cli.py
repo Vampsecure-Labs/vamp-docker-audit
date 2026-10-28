@@ -1,6 +1,6 @@
 # © VampSecure Studios — VampSecure Labs Security Research Division
 """
-cli.py — Command-line interface entry point for vamp-docker-audit v1.5.0.
+cli.py — Command-line interface entry point for vamp-docker-audit v1.5.0
 """
 from __future__ import annotations
 

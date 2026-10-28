@@ -162,7 +162,7 @@ python3 vamp_docker_audit.py \
 ```
 $ python3 vamp_docker_audit.py --containers web,api,db,cache
 
- vamp-docker-audit v1.6 — VampSecure Labs
+ vamp-docker-audit v1.5.0 — VampSecure Labs
  Docker socket: /var/run/docker.sock  ✓ Accessible
  Containers targeted: 4  |  Running: 4  |  Stopped: 0
 
@@ -424,7 +424,7 @@ python3 vamp_docker_audit.py \
 ```
 $ python3 vamp_docker_audit.py --containers web,api,db,cache
 
- vamp-docker-audit v1.6 — VampSecure Labs
+ vamp-docker-audit v1.5.0 — VampSecure Labs
  Docker socket: /var/run/docker.sock  ✓ Accesible
  Contenedores objetivo: 4  |  En ejecución: 4  |  Parados: 0
 
