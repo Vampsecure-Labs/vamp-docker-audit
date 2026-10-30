@@ -8,8 +8,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-VERSION   = "1.5.0"
+VERSION   = "1.6.0"
 TOOL_NAME = "vamp-docker-audit"
+
+LANG: str = "en"
+
+
+def _s(en: str, es: str) -> str:
+    """Return string in active language (resolved at call time)."""
+    return es if LANG == "es" else en
 
 # ---------------------------------------------------------------------------
 # Mapas de severidad
@@ -96,23 +103,23 @@ LAYER_SECRET_PATTERNS = [
             r"private[_-]?key|credentials|auth[_-]?token|access[_-]?key|"
             r"secret[_-]?key)\s*[=:]\s*\S+",
         ),
-        "Posible credencial en parámetro RUN/ENV",
+        _s("Possible credential in RUN/ENV parameter", "Posible credencial en parámetro RUN/ENV"),
     ),
     (
         re.compile(r"(?i)--password\s+\S+"),
-        "Contraseña como argumento CLI en RUN",
+        _s("Password as CLI argument in RUN", "Contraseña como argumento CLI en RUN"),
     ),
     (
         re.compile(r"(?i)--token\s+\S+"),
-        "Token como argumento CLI en RUN",
+        _s("Token as CLI argument in RUN", "Token como argumento CLI en RUN"),
     ),
     (
         re.compile(r"AKIA[0-9A-Z]{16}"),
-        "AWS Access Key ID en historia de capa",
+        _s("AWS Access Key ID in layer history", "AWS Access Key ID en historia de capa"),
     ),
     (
         re.compile(r"(?i)bearer\s+[A-Za-z0-9\-._~+/]{20,}"),
-        "Bearer token en historia de capa",
+        _s("Bearer token in layer history", "Bearer token en historia de capa"),
     ),
     (
         re.compile(r"(?i)sk_live_[0-9a-zA-Z]{24,}"),

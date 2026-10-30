@@ -22,6 +22,7 @@ from ._models import (
     Finding,
     ContainerAuditResult,
     DockerAuditResult,
+    _s,
 )
 from vampsec_report import (
     Finding as VSLFinding,
@@ -56,8 +57,7 @@ class DockerReporter:
         self._c.print(f"\n[bold cyan]Host:[/]         [white]{resultado.host}[/]")
         self._c.print(f"[bold cyan]Docker:[/]       [white]{resultado.docker_version}[/]")
         self._c.print(
-            f"[bold cyan]Contenedores:[/] [white]{len(resultado.containers)}[/] "
-            f"auditados\n"
+            f_s(f"[bold cyan]Containers:[/]   [white]{len(resultado.containers)}[/] audited\n", f"[bold cyan]Contenedores:[/] [white]{len(resultado.containers)}[/] auditados\n")
         )
 
     def print_container(self, car: ContainerAuditResult) -> None:
@@ -67,7 +67,7 @@ class DockerReporter:
         if not car.findings:
             self._c.print(
                 Panel(
-                    "[bold green]Sin hallazgos de seguridad[/bold green]",
+                    _s("[bold green]No security findings[/bold green]", "[bold green]Sin hallazgos de seguridad[/bold green]"),
                     title=(
                         f"[bold]{car.container_name}[/bold] [{sev_color}]"
                         f"{car.max_severity}[/{sev_color}]"
@@ -81,9 +81,9 @@ class DockerReporter:
         tbl = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 1))
         tbl.add_column("ID",          width=10)
         tbl.add_column("SEV",         width=10)
-        tbl.add_column("Categoría",   width=14)
-        tbl.add_column("Hallazgo",    min_width=36)
-        tbl.add_column("Evidencia",   min_width=28)
+        tbl.add_column(_s("Category", "Categoría"),   width=14)
+        tbl.add_column(_s("Finding", "Hallazgo"),    min_width=36)
+        tbl.add_column(_s("Evidence", "Evidencia"),   min_width=28)
 
         for f in car.findings:
             color = SEVERITY_COLOR.get(f.severity, "white")
@@ -132,8 +132,8 @@ class DockerReporter:
         tbl = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 1))
         tbl.add_column("ID",        width=10)
         tbl.add_column("SEV",       width=10)
-        tbl.add_column("Hallazgo",  min_width=44)
-        tbl.add_column("Evidencia", min_width=28)
+        tbl.add_column(_s("Finding", "Hallazgo"),  min_width=44)
+        tbl.add_column(_s("Evidence", "Evidencia"), min_width=28)
 
         for f in findings:
             color = SEVERITY_COLOR.get(f.severity, "white")
@@ -152,20 +152,20 @@ class DockerReporter:
         """Tabla resumen global de todos los contenedores auditados."""
         self._c.print("\n")
         tbl = Table(
-            title="Resumen de Auditoría Docker",
+            title=_s("Docker Audit Summary", "Resumen de Auditoría Docker"),
             header_style="bold cyan",
             show_lines=True,
         )
-        tbl.add_column("Contenedor",  min_width=22)
-        tbl.add_column("Imagen",      min_width=26)
-        tbl.add_column("Estado",      width=10)
+        tbl.add_column(_s("Container", "Contenedor"),  min_width=22)
+        tbl.add_column(_s("Image", "Imagen"),      min_width=26)
+        tbl.add_column(_s("Status", "Estado"),      width=10)
         tbl.add_column("CRIT",        width=6)
         tbl.add_column("HIGH",        width=6)
         tbl.add_column("MED",         width=6)
         tbl.add_column("LOW",         width=6)
         tbl.add_column("INFO",        width=6)
         tbl.add_column("Total",       width=7)
-        tbl.add_column("Sev. máx.",   width=10)
+        tbl.add_column(_s("Max sev.", "Sev. máx."),   width=10)
 
         for car in resultado.containers:
             sev_col = SEVERITY_COLOR.get(car.max_severity, "white")
@@ -266,13 +266,13 @@ class DockerReporter:
 
         def _findings_table(findings: list[Finding]) -> str:
             if not findings:
-                return '<p class="good">Sin hallazgos</p>'
+                return '<p class="good">No findings</p>'
             rows = ""
             for f in findings:
                 remed = ""
                 if f.remediation:
                     remed = (
-                        f'<details class="remed"><summary>Ver remediación</summary>'
+                        f'<details class="remed"><summary>See remediation</summary>'
                         f'<pre>{escape(f.remediation)}</pre></details>'
                     )
                 rows += (
@@ -286,8 +286,8 @@ class DockerReporter:
                 )
             return (
                 '<table class="findings-table">'
-                '<thead><tr><th>ID</th><th>SEV</th><th>Categoría</th>'
-                '<th>Hallazgo / Remediación</th><th>Evidencia</th></tr></thead>'
+                '<thead><tr><th>ID</th><th>SEV</th><th>Category</th>'
+                '<th>Finding / Remediation</th><th>Evidence</th></tr></thead>'
                 f'<tbody>{rows}</tbody>'
                 '</table>'
             )
@@ -301,9 +301,9 @@ class DockerReporter:
                 <span class="badge {sev_css}">{escape(car.max_severity)}</span>
                 <h2>{escape(car.container_name)}</h2>
                 <span class="dim">{escape(car.image)}</span>
-                <span class="dim">Estado: {escape(car.status)}</span>
+                <span class="dim">Status: {escape(car.status)}</span>
               </div>
-              <h3>Hallazgos ({len(car.findings)})</h3>
+              <h3>Findings ({len(car.findings)})</h3>
               {_findings_table(car.findings)}
             </div>"""
 
@@ -317,7 +317,7 @@ class DockerReporter:
         if hallazgos_globales:
             bloque_global = f"""
             <div class="result-block">
-              <h2>Hallazgos de Entorno, Imágenes y Redes</h2>
+              <h2>Environment, Image & Network Findings</h2>
               {_findings_table(hallazgos_globales)}
             </div>"""
 
@@ -340,7 +340,7 @@ class DockerReporter:
             )
 
         return f"""<!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -406,21 +406,21 @@ footer {{ margin-top: 32px; text-align: center;
   <h1>VampSecure Labs — Docker Security Audit Report</h1>
   <p>{TOOL_NAME} v{VERSION} · {generated} · Host: {escape(resultado.host)}
      · {escape(resultado.docker_version)}
-     · VampSecure Studios · Uso exclusivo en auditorías autorizadas</p>
+     · VampSecure Studios · For authorized audits only</p>
 </header>
 
 {bloque_global}
 {bloques_contenedores}
 
 <div class="result-block">
-  <h2>Tabla Resumen Global</h2>
+  <h2>Global Summary</h2>
   <table class="summary-table">
     <thead>
       <tr>
-        <th>Contenedor</th><th>Imagen</th><th>Estado</th>
+        <th>Container</th><th>Image</th><th>Status</th>
         <th class="sev-crit">CRIT</th><th class="sev-high">HIGH</th>
         <th class="sev-med">MED</th><th class="sev-low">LOW</th>
-        <th class="sev-info">INFO</th><th>Total</th><th>Sev. Máx.</th>
+        <th class="sev-info">INFO</th><th>Total</th><th>Max Sev.</th>
       </tr>
     </thead>
     <tbody>
