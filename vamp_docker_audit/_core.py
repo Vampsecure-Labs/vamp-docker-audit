@@ -27,6 +27,7 @@ from ._models import (
     Finding,
     ContainerAuditResult,
     DockerAuditResult,
+    _s,
 )
 
 
@@ -326,22 +327,33 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="CRITICAL",
                 category="Contenedor",
-                title="Contenedor en modo privilegiado",
-                description=(
+                title=_s("Container in privileged mode", "Contenedor en modo privilegiado"),
+                description=_s(
+                    "The container runs with --privileged, granting it "
+                    "full access to all host devices and removing kernel "
+                    "security restrictions (capabilities, seccomp, AppArmor). "
+                    "Equivalent to root access on the host.",
                     "El contenedor se ejecuta con --privileged, que le otorga "
                     "acceso completo a todos los dispositivos del host y elimina "
                     "las restricciones de seguridad del kernel (capabilities, "
-                    "seccomp, AppArmor). Equivale a acceso root en el host."
+                    "seccomp, AppArmor). Equivale a acceso root en el host.",
                 ),
                 evidence=f"Contenedor: {name} | Imagen: {image} | Privileged: true",
-                remediation=(
+                remediation=_s(
+                    "Remove the --privileged flag and add only strictly necessary\n"
+                    "capabilities with --cap-add:\n"
+                    "  docker run --cap-add NET_ADMIN ... (example)\n"
+                    "In Compose:\n"
+                    "  cap_add:\n"
+                    "    - NET_ADMIN\n"
+                    "Ref: CIS Docker Benchmark §5.4",
                     "Eliminar el flag --privileged y añadir únicamente las capabilities\n"
                     "estrictamente necesarias con --cap-add:\n"
                     "  docker run --cap-add NET_ADMIN ... (ejemplo)\n"
                     "En Compose:\n"
                     "  cap_add:\n"
                     "    - NET_ADMIN\n"
-                    "Ref: CIS Docker Benchmark §5.4"
+                    "Ref: CIS Docker Benchmark §5.4",
                 ),
                 container=name,
             ))
@@ -358,18 +370,25 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="HIGH",
                 category="Contenedor",
-                title="Capacidades Linux peligrosas habilitadas",
-                description=(
+                title=_s("Dangerous Linux capabilities enabled", "Capacidades Linux peligrosas habilitadas"),
+                description=_s(
+                    "The container has Linux capabilities that may allow "
+                    "privilege escalation or compromise kernel isolation: "
+                    + ", ".join(caps_peligrosas),
                     "El contenedor tiene añadidas capabilities de Linux que pueden "
                     "permitir escalada de privilegios o comprometer el aislamiento "
-                    "del kernel: " + ", ".join(caps_peligrosas)
+                    "del kernel: " + ", ".join(caps_peligrosas),
                 ),
                 evidence=f"CapAdd: {', '.join(caps_peligrosas)}",
-                remediation=(
+                remediation=_s(
+                    "Review whether capabilities are strictly necessary.\n"
+                    "CAP_SYS_ADMIN in particular is nearly equivalent to full root.\n"
+                    "Use Seccomp and AppArmor profiles to restrict syscalls.\n"
+                    "Ref: CIS Docker Benchmark §5.24-5.30",
                     "Revisar si las capabilities son estrictamente necesarias.\n"
                     "CAP_SYS_ADMIN en particular equivale a casi root completo.\n"
                     "Usar perfiles Seccomp y AppArmor para restringir syscalls.\n"
-                    "Ref: CIS Docker Benchmark §5.24-5.30"
+                    "Ref: CIS Docker Benchmark §5.24-5.30",
                 ),
                 container=name,
             ))
@@ -382,20 +401,29 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="MEDIUM",
                 category="Contenedor",
-                title="Contenedor ejecutándose como root",
-                description=(
+                title=_s("Container running as root", "Contenedor ejecutándose como root"),
+                description=_s(
+                    "The container's main process runs as root "
+                    f"(User={user!r}). If a container escape occurs, "
+                    "the attacker gains root privileges on the host.",
                     "El proceso principal del contenedor se ejecuta como root "
                     f"(User={user!r}). Si se produce una escapada de contenedor, "
-                    "el atacante obtiene privilegios de root en el host."
+                    "el atacante obtiene privilegios de root en el host.",
                 ),
                 evidence=f"Config.User={user!r}",
-                remediation=(
+                remediation=_s(
+                    "Specify a non-privileged user in the Dockerfile:\n"
+                    "  RUN useradd -u 1000 appuser\n"
+                    "  USER appuser\n"
+                    "Or with --user in docker run:\n"
+                    "  docker run --user 1000:1000 ...\n"
+                    "Ref: CIS Docker Benchmark §4.1",
                     "Especificar un usuario no privilegiado en el Dockerfile:\n"
                     "  RUN useradd -u 1000 appuser\n"
                     "  USER appuser\n"
                     "O con --user en docker run:\n"
                     "  docker run --user 1000:1000 ...\n"
-                    "Ref: CIS Docker Benchmark §4.1"
+                    "Ref: CIS Docker Benchmark §4.1",
                 ),
                 container=name,
             ))
@@ -411,19 +439,27 @@ class DockerAuditor:
                     id=f"DOCK-{self._counter:03d}",
                     severity="CRITICAL",
                     category="Contenedor",
-                    title="Socket Docker montado dentro del contenedor",
-                    description=(
+                    title=_s("Docker socket mounted inside container", "Socket Docker montado dentro del contenedor"),
+                    description=_s(
+                        "The Docker daemon socket is mounted inside the container. "
+                        "Any process within can create new privileged containers "
+                        "or gain full access to the host.",
                         "El socket del daemon Docker está montado en el interior "
                         "del contenedor. Cualquier proceso dentro puede crear "
-                        "nuevos contenedores privilegiados o acceder al host completo."
+                        "nuevos contenedores privilegiados o acceder al host completo.",
                     ),
-                    evidence=f"Montaje: {spec}",
-                    remediation=(
+                    evidence=_s(f"Mount: {spec}", f"Montaje: {spec}"),
+                    remediation=_s(
+                        "Remove the Docker socket mount from the container.\n"
+                        "If the container needs orchestration, consider alternatives "
+                        "like Docker-in-Docker with TLS or a socket proxy "
+                        "(e.g. docker-socket-proxy) that limits API methods.\n"
+                        "Ref: CIS Docker Benchmark §5.31",
                         "Eliminar el montaje del socket Docker del contenedor.\n"
                         "Si el contenedor necesita orquestación, evaluar alternativas "
                         "como Docker-in-Docker con TLS o el uso de un socket proxy "
                         "(p.ej. docker-socket-proxy) que limite los métodos de API.\n"
-                        "Ref: CIS Docker Benchmark §5.31"
+                        "Ref: CIS Docker Benchmark §5.31",
                     ),
                     container=name,
                 ))
@@ -436,20 +472,29 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="HIGH",
                 category="Contenedor",
-                title="Contenedor en red host (NetworkMode=host)",
-                description=(
+                title=_s("Container using host network (NetworkMode=host)", "Contenedor en red host (NetworkMode=host)"),
+                description=_s(
+                    "The container shares the host network stack. Any service "
+                    "the container starts listens directly on the host interface, "
+                    "removing network isolation.",
                     "El contenedor comparte la pila de red del host. Cualquier "
                     "servicio que arranque el contenedor escucha directamente en "
-                    "la interfaz del host, eliminando el aislamiento de red."
+                    "la interfaz del host, eliminando el aislamiento de red.",
                 ),
-                evidence="NetworkMode: host",
-                remediation=(
+                evidence=_s("NetworkMode: host", "NetworkMode: host"),
+                remediation=_s(
+                    "Use bridge networks with explicit port mapping:\n"
+                    "  docker run -p 127.0.0.1:8080:8080 ...\n"
+                    "In Compose:\n"
+                    "  ports:\n"
+                    "    - '127.0.0.1:8080:8080'\n"
+                    "Ref: CIS Docker Benchmark §5.15",
                     "Usar redes de bridge con mapeo de puertos explícito:\n"
                     "  docker run -p 127.0.0.1:8080:8080 ...\n"
                     "En Compose:\n"
                     "  ports:\n"
                     "    - '127.0.0.1:8080:8080'\n"
-                    "Ref: CIS Docker Benchmark §5.15"
+                    "Ref: CIS Docker Benchmark §5.15",
                 ),
                 container=name,
             ))
@@ -466,20 +511,29 @@ class DockerAuditor:
                     id=f"DOCK-{self._counter:03d}",
                     severity="MEDIUM",
                     category="Contenedor",
-                    title=f"Montaje bind en ruta sensible del host: {src}",
-                    description=(
+                    title=_s(f"Bind mount on sensitive host path: {src}", f"Montaje bind en ruta sensible del host: {src}"),
+                    description=_s(
+                        f"The container has host path {src!r} mounted. "
+                        "Depending on permissions, the container may read or "
+                        "modify host system or configuration files.",
                         f"El contenedor tiene montada la ruta {src!r} del host. "
                         "Dependiendo de los permisos, el contenedor puede leer o "
-                        "modificar ficheros de sistema o configuración del host."
+                        "modificar ficheros de sistema o configuración del host.",
                     ),
-                    evidence=f"Montaje: {spec}",
-                    remediation=(
+                    evidence=_s(f"Mount: {spec}", f"Montaje: {spec}"),
+                    remediation=_s(
+                        "Evaluate whether the mount is strictly necessary.\n"
+                        "If so, mount it read-only:\n"
+                        "  -v /etc/resolv.conf:/etc/resolv.conf:ro\n"
+                        "Use named Docker volumes instead of bind mounts\n"
+                        "when possible.\n"
+                        "Ref: CIS Docker Benchmark §5.5",
                         "Evaluar si el montaje es estrictamente necesario.\n"
                         "Si lo es, montarlo en modo solo lectura:\n"
                         "  -v /etc/resolv.conf:/etc/resolv.conf:ro\n"
                         "Usar volúmenes nombrados de Docker en lugar de bind mounts\n"
                         "cuando sea posible.\n"
-                        "Ref: CIS Docker Benchmark §5.5"
+                        "Ref: CIS Docker Benchmark §5.5",
                     ),
                     container=name,
                 ))
@@ -492,19 +546,27 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="HIGH",
                 category="Contenedor",
-                title="Contenedor comparte PID namespace del host",
-                description=(
+                title=_s("Container shares host PID namespace", "Contenedor comparte PID namespace del host"),
+                description=_s(
+                    "The container uses --pid=host, allowing it to see and send "
+                    "signals to all host processes. This can facilitate "
+                    "espionage or termination of host processes.",
                     "El contenedor usa --pid=host, lo que le permite ver y enviar "
                     "señales a todos los procesos del host. Esto puede facilitar "
-                    "ataques de espionaje o terminación de procesos del host."
+                    "ataques de espionaje o terminación de procesos del host.",
                 ),
-                evidence="PidMode: host",
-                remediation=(
+                evidence=_s("PidMode: host", "PidMode: host"),
+                remediation=_s(
+                    "Remove --pid=host from docker run or Compose:\n"
+                    "  # Remove: pid: host\n"
+                    "Only use --pid=host if the application requires inspecting\n"
+                    "host processes and the risk is explicitly accepted.\n"
+                    "Ref: CIS Docker Benchmark §5.16",
                     "Eliminar --pid=host del comando docker run o del Compose:\n"
                     "  # Eliminar: pid: host\n"
                     "Solo usar --pid=host si la aplicación requiere inspeccionar\n"
                     "procesos del host y el riesgo es aceptado explícitamente.\n"
-                    "Ref: CIS Docker Benchmark §5.16"
+                    "Ref: CIS Docker Benchmark §5.16",
                 ),
                 container=name,
             ))
@@ -517,18 +579,25 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="MEDIUM",
                 category="Contenedor",
-                title="Contenedor comparte IPC namespace del host",
-                description=(
+                title=_s("Container shares host IPC namespace", "Contenedor comparte IPC namespace del host"),
+                description=_s(
+                    "The container uses --ipc=host, sharing the host's "
+                    "shared memory. A process inside the container can "
+                    "read shared memory from other host processes.",
                     "El contenedor usa --ipc=host, compartiendo la memoria "
                     "compartida del host. Un proceso dentro del contenedor puede "
-                    "leer memoria compartida de otros procesos del host."
+                    "leer memoria compartida de otros procesos del host.",
                 ),
-                evidence="IpcMode: host",
-                remediation=(
+                evidence=_s("IpcMode: host", "IpcMode: host"),
+                remediation=_s(
+                    "Remove --ipc=host. Use the default IPC namespace.\n"
+                    "If two containers need shared IPC, use:\n"
+                    "  --ipc=container:<name> (only between them).\n"
+                    "Ref: CIS Docker Benchmark §5.17",
                     "Eliminar --ipc=host. Usar el IPC namespace por defecto.\n"
                     "Si dos contenedores necesitan IPC compartido, usar:\n"
                     "  --ipc=container:<nombre> (solo entre ellos).\n"
-                    "Ref: CIS Docker Benchmark §5.17"
+                    "Ref: CIS Docker Benchmark §5.17",
                 ),
                 container=name,
             ))
@@ -541,15 +610,27 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="INFO",
                 category="Contenedor",
-                title="Política de reinicio 'always' sin límite de intentos",
-                description=(
+                title=_s("Restart policy 'always' with no retry limit", "Política de reinicio 'always' sin límite de intentos"),
+                description=_s(
+                    "The 'always' restart policy causes Docker to restart "
+                    "the container indefinitely, even after crash loops. "
+                    "Not a security issue per se, but can hide problems "
+                    "and hinder compromise detection.",
                     "La política de reinicio 'always' hace que Docker reinicie "
                     "el contenedor indefinidamente, incluso tras fallos en bucle. "
                     "No es un fallo de seguridad en sí, pero puede ocultar problemas "
-                    "y dificultar la detección de compromisos."
+                    "y dificultar la detección de compromisos.",
                 ),
                 evidence=f"RestartPolicy: {restart}",
-                remediation=(
+                remediation=_s(
+                    "Consider 'on-failure' with a maximum retry count:\n"
+                    "  --restart=on-failure:5\n"
+                    "In Compose:\n"
+                    "  restart: on-failure\n"
+                    "  deploy:\n"
+                    "    restart_policy:\n"
+                    "      condition: on-failure\n"
+                    "      max_attempts: 5",
                     "Considerar 'on-failure' con un máximo de intentos:\n"
                     "  --restart=on-failure:5\n"
                     "En Compose:\n"
@@ -557,7 +638,7 @@ class DockerAuditor:
                     "  deploy:\n"
                     "    restart_policy:\n"
                     "      condition: on-failure\n"
-                    "      max_attempts: 5"
+                    "      max_attempts: 5",
                 ),
                 container=name,
             ))
@@ -580,14 +661,25 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="LOW",
                 category="Contenedor",
-                title="Puertos expuestos en todas las interfaces (0.0.0.0)",
-                description=(
+                title=_s("Ports exposed on all interfaces (0.0.0.0)", "Puertos expuestos en todas las interfaces (0.0.0.0)"),
+                description=_s(
+                    "The container has ports published on 0.0.0.0, making them "
+                    "accessible from any host network interface, including "
+                    "external interfaces if the host has public connectivity.",
                     "El contenedor tiene puertos publicados en 0.0.0.0, haciéndolos "
                     "accesibles desde cualquier interfaz de red del host, incluidas "
-                    "interfaces externas si el host tiene conectividad pública."
+                    "interfaces externas si el host tiene conectividad pública.",
                 ),
-                evidence="Puertos: " + " | ".join(puertos_expuestos),
-                remediation=(
+                evidence=_s("Ports: ", "Puertos: ") + " | ".join(puertos_expuestos),
+                remediation=_s(
+                    "Bind ports to 127.0.0.1 if only local access is needed:\n"
+                    "  docker run -p 127.0.0.1:8080:80 ...\n"
+                    "In Compose:\n"
+                    "  ports:\n"
+                    "    - '127.0.0.1:8080:80'\n"
+                    "Use a reverse proxy (nginx, Caddy, Traefik) to expose them\n"
+                    "selectively with TLS.\n"
+                    "Ref: CIS Docker Benchmark §5.7",
                     "Enlazar los puertos a 127.0.0.1 si solo necesitan acceso local:\n"
                     "  docker run -p 127.0.0.1:8080:80 ...\n"
                     "En Compose:\n"
@@ -595,7 +687,7 @@ class DockerAuditor:
                     "    - '127.0.0.1:8080:80'\n"
                     "Usar un proxy inverso (nginx, Caddy, Traefik) para exponerlos\n"
                     "selectivamente con TLS.\n"
-                    "Ref: CIS Docker Benchmark §5.7"
+                    "Ref: CIS Docker Benchmark §5.7",
                 ),
                 container=name,
             ))
@@ -631,21 +723,31 @@ class DockerAuditor:
                         id=f"DOCK-{self._counter:03d}",
                         severity="HIGH",
                         category="ENV",
-                        title=f"Posible secreto en variable de entorno: {var_name}",
-                        description=(
+                        title=_s(f"Possible secret in environment variable: {var_name}", f"Posible secreto en variable de entorno: {var_name}"),
+                        description=_s(
+                            f"Variable {var_name!r} in container {car.container_name!r} "
+                            "has a name suggesting a credential, token, or key. Injecting "
+                            "secrets as environment variables exposes them in `docker inspect` "
+                            "and process logs.",
                             f"La variable {var_name!r} del contenedor {car.container_name!r} "
                             "tiene un nombre que sugiere credencial, token o clave. Inyectar "
                             "secretos como variables de entorno los expone en `docker inspect` "
-                            "y en los logs del proceso."
+                            "y en los logs del proceso.",
                         ),
-                        evidence=f"{var_name}={redacted} (contenedor: {car.container_name})",
-                        remediation=(
+                        evidence=_s(f"{var_name}={redacted} (container: {car.container_name})", f"{var_name}={redacted} (contenedor: {car.container_name})"),
+                        remediation=_s(
+                            "Use Docker Secrets (Swarm) or an external manager:\n"
+                            "  docker secret create my_password file.txt\n"
+                            "Without Swarm, use secret files mounted\n"
+                            "read-only with 400 permissions.\n"
+                            "Alternatives: HashiCorp Vault, AWS Secrets Manager.\n"
+                            "Ref: CIS Docker Benchmark §4.6",
                             "Usar Docker Secrets (Swarm) o un gestor externo:\n"
                             "  docker secret create mi_password fichero.txt\n"
                             "En entornos sin Swarm, usar ficheros de secrets montados\n"
                             "en modo solo lectura y con permisos 400.\n"
                             "Alternativamente: HashiCorp Vault, AWS Secrets Manager.\n"
-                            "Ref: CIS Docker Benchmark §4.6"
+                            "Ref: CIS Docker Benchmark §4.6",
                         ),
                         container=car.container_name,
                     ))
@@ -659,18 +761,25 @@ class DockerAuditor:
                             id=f"DOCK-{self._counter:03d}",
                             severity="HIGH",
                             category="ENV",
-                            title=f"Valor con patrón de secreto en variable: {var_name}",
-                            description=(
+                            title=_s(f"Secret pattern value in variable: {var_name}", f"Valor con patrón de secreto en variable: {var_name}"),
+                            description=_s(
+                                f"Variable {var_name!r} in {car.container_name!r} contains "
+                                "a value matching the pattern of a known token "
+                                "(JWT, API key, GitHub/GitLab/Slack/AWS access token…).",
                                 f"La variable {var_name!r} en {car.container_name!r} contiene "
                                 "un valor que coincide con el patrón de un token conocido "
-                                "(JWT, clave de API, token de acceso GitHub/GitLab/Slack/AWS…)."
+                                "(JWT, clave de API, token de acceso GitHub/GitLab/Slack/AWS…).",
                             ),
-                            evidence=f"{var_name}={redacted} (contenedor: {car.container_name})",
-                            remediation=(
+                            evidence=_s(f"{var_name}={redacted} (container: {car.container_name})", f"{var_name}={redacted} (contenedor: {car.container_name})"),
+                            remediation=_s(
+                                "Rotate the secret immediately if compromised.\n"
+                                "Migrate to Docker Secrets, env vars from a file\n"
+                                "with restrictive permissions, or an external secrets manager.\n"
+                                "Ref: CIS Docker Benchmark §4.6",
                                 "Rotar el secreto inmediatamente si está comprometido.\n"
                                 "Migrar a Docker Secrets, variables de entorno desde fichero\n"
                                 "con permisos restrictivos, o un gestor de secretos externo.\n"
-                                "Ref: CIS Docker Benchmark §4.6"
+                                "Ref: CIS Docker Benchmark §4.6",
                             ),
                             container=car.container_name,
                         ))
@@ -683,18 +792,25 @@ class DockerAuditor:
                         id=f"DOCK-{self._counter:03d}",
                         severity="MEDIUM",
                         category="ENV",
-                        title=f"Connection string en variable: {var_name}",
-                        description=(
+                        title=_s(f"Connection string in variable: {var_name}", f"Connection string en variable: {var_name}"),
+                        description=_s(
+                            f"Variable {var_name!r} in {car.container_name!r} appears to "
+                            "contain a database connection URL that may include "
+                            "username, password, and host in plaintext.",
                             f"La variable {var_name!r} en {car.container_name!r} parece "
                             "contener una URL de conexión a base de datos que puede incluir "
-                            "usuario, contraseña y host en texto claro."
+                            "usuario, contraseña y host en texto claro.",
                         ),
-                        evidence=f"{var_name}={redacted} (contenedor: {car.container_name})",
-                        remediation=(
+                        evidence=_s(f"{var_name}={redacted} (container: {car.container_name})", f"{var_name}={redacted} (contenedor: {car.container_name})"),
+                        remediation=_s(
+                            "Separate credentials from the connection string.\n"
+                            "Use individual variables for user and password,\n"
+                            "and manage the password as a Docker Secret.\n"
+                            "Ref: OWASP Secrets Management Cheat Sheet",
                             "Separar las credenciales de la cadena de conexión.\n"
                             "Usar variables individuales para usuario y contraseña,\n"
                             "y gestionar la contraseña como Docker Secret.\n"
-                            "Ref: OWASP Secrets Management Cheat Sheet"
+                            "Ref: OWASP Secrets Management Cheat Sheet",
                         ),
                         container=car.container_name,
                     ))
@@ -728,19 +844,27 @@ class DockerAuditor:
                     id=f"DOCK-{self._counter:03d}",
                     severity="LOW",
                     category="Imagen",
-                    title=f"Imagen sin versión fija: {imagen}",
-                    description=(
+                    title=_s(f"Image without fixed version: {imagen}", f"Imagen sin versión fija: {imagen}"),
+                    description=_s(
+                        f"Image {imagen!r} uses the 'latest' tag (or none), "
+                        "which prevents reproducibility guarantees and may download "
+                        "different versions on each pull, potentially with regressions "
+                        "or new vulnerabilities.",
                         f"La imagen {imagen!r} usa la etiqueta 'latest' (o ninguna), "
                         "lo que impide garantizar reproducibilidad y puede descargar "
                         "versiones distintas en cada pull, potencialmente con regresiones "
-                        "o vulnerabilidades nuevas."
+                        "o vulnerabilidades nuevas.",
                     ),
                     evidence=f"Imagen: {imagen} | ID: {img_id}",
-                    remediation=(
+                    remediation=_s(
+                        "Pin the image version with SHA256 digest or semantic tag:\n"
+                        "  FROM nginx:1.25.3\n"
+                        "  FROM nginx@sha256:abc123...\n"
+                        "Ref: CIS Docker Benchmark §4.8 · OCI Image Spec",
                         "Fijar la versión de la imagen con digest SHA256 o tag semántico:\n"
                         "  FROM nginx:1.25.3\n"
                         "  FROM nginx@sha256:abc123...\n"
-                        "Ref: CIS Docker Benchmark §4.8 · OCI Image Spec"
+                        "Ref: CIS Docker Benchmark §4.8 · OCI Image Spec",
                     ),
                 ))
 
@@ -759,19 +883,27 @@ class DockerAuditor:
                         id=f"DOCK-{self._counter:03d}",
                         severity="INFO",
                         category="Imagen",
-                        title=f"Imagen antigua ({dias}d) sin actualización: {imagen}",
-                        description=(
+                        title=_s(f"Old image ({dias}d) without update: {imagen}", f"Imagen antigua ({dias}d) sin actualización: {imagen}"),
+                        description=_s(
+                            f"Image {imagen!r} has not been updated for {dias} days. "
+                            "Old images may contain base packages with "
+                            "known unpatched vulnerabilities.",
                             f"La imagen {imagen!r} tiene {dias} días sin actualizarse. "
                             "Imágenes antiguas pueden contener paquetes de base con "
-                            "vulnerabilidades conocidas no parcheadas."
+                            "vulnerabilidades conocidas no parcheadas.",
                         ),
                         evidence=f"Imagen: {imagen} | Creada: {created_str.strip()} | {dias} días",
-                        remediation=(
+                        remediation=_s(
+                            "Establish a periodic image update process:\n"
+                            "  docker pull <image>  # download updated version\n"
+                            "  docker build --pull ...\n"
+                            "Use tools like Trivy, Grype or Snyk to scan\n"
+                            "images for known CVEs.",
                             "Establecer un proceso periódico de actualización de imágenes base:\n"
                             "  docker pull <imagen>  # descargar versión actualizada\n"
                             "  docker build --pull ...\n"
                             "Usar herramientas como Trivy, Grype o Snyk para escanear\n"
-                            "las imágenes en busca de CVEs conocidos."
+                            "las imágenes en busca de CVEs conocidos.",
                         ),
                     ))
             except (ValueError, TypeError):
@@ -808,16 +940,21 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="INFO",
                 category="Red",
-                title=f"Redes en modo host detectadas: {', '.join(redes_host)}",
-                description=(
+                title=_s(f"Host-mode networks detected: {', '.join(redes_host)}", f"Redes en modo host detectadas: {', '.join(redes_host)}"),
+                description=_s(
+                    "Host-mode Docker networks exist. Containers connected "
+                    "to them share the host network stack (already "
+                    "reported per-container where applicable).",
                     "Existen redes Docker en modo host. Los contenedores conectados "
                     "a ellas comparten la pila de red del sistema anfitrión (ya "
-                    "reportado por contenedor si aplica)."
+                    "reportado por contenedor si aplica).",
                 ),
-                evidence="Redes host: " + ", ".join(redes_host),
-                remediation=(
+                evidence=_s("Host networks: ", "Redes host: ") + ", ".join(redes_host),
+                remediation=_s(
+                    "Migrate to bridge-type networks with explicit port publishing.\n"
+                    "Ref: CIS Docker Benchmark §5.15",
                     "Migrar a redes de tipo bridge con publicación de puertos explícita.\n"
-                    "Ref: CIS Docker Benchmark §5.15"
+                    "Ref: CIS Docker Benchmark §5.15",
                 ),
             ))
 
@@ -840,19 +977,26 @@ class DockerAuditor:
                 id=f"DOCK-{self._counter:03d}",
                 severity="INFO",
                 category="Volumen",
-                title=f"Inventario de volúmenes Docker ({len(volumenes)} encontrados)",
-                description=(
+                title=_s(f"Docker volume inventory ({len(volumenes)} found)", f"Inventario de volúmenes Docker ({len(volumenes)} encontrados)"),
+                description=_s(
+                    "The following Docker volumes are registered on the host. "
+                    "Verify they do not contain unencrypted sensitive data and "
+                    "that host access permissions are appropriate.",
                     "Se han encontrado los siguientes volúmenes Docker registrados en el host. "
                     "Revisar que no contengan datos sensibles sin cifrar y que los permisos "
-                    "de acceso en el host sean adecuados."
+                    "de acceso en el host sean adecuados.",
                 ),
-                evidence="Volúmenes: " + " | ".join(volumenes[:20])
+                evidence=_s("Volumes: ", "Volúmenes: ") + " | ".join(volumenes[:20])
                          + (" …" if len(volumenes) > 20 else ""),
-                remediation=(
+                remediation=_s(
+                    "Document the purpose of each volume.\n"
+                    "Remove orphaned volumes: docker volume prune\n"
+                    "Encrypt sensitive data at rest within volumes.\n"
+                    "Ref: CIS Docker Benchmark §7",
                     "Documentar el propósito de cada volumen.\n"
                     "Eliminar volúmenes huérfanos: docker volume prune\n"
                     "Cifrar datos sensibles en reposo dentro de los volúmenes.\n"
-                    "Ref: CIS Docker Benchmark §7"
+                    "Ref: CIS Docker Benchmark §7",
                 ),
             ))
 
@@ -906,20 +1050,36 @@ class DockerAuditor:
                             id=f"DOCK-{self._counter:03d}",
                             severity="CRITICAL",
                             category="Imagen",
-                            title=f"Secreto en historia de capa de imagen: {imagen}",
-                            description=(
+                            title=_s(f"Secret in image layer history: {imagen}", f"Secreto en historia de capa de imagen: {imagen}"),
+                            description=_s(
+                                f"A possible secret was detected in the layer history "
+                                f"of image '{imagen}'. Type: {descripcion}. "
+                                "Secrets in image layers are persistent — even if "
+                                "overwritten in later layers, they remain recoverable "
+                                "by inspecting earlier layers with 'docker history'.",
                                 f"Se ha detectado un posible secreto en la historia de "
                                 f"capas de la imagen '{imagen}'. Tipo: {descripcion}. "
                                 "Los secretos en capas de imagen son persistentes — aunque "
                                 "se sobreescriban en capas posteriores son recuperables "
-                                "inspeccionando las capas anteriores con 'docker history'."
+                                "inspeccionando las capas anteriores con 'docker history'.",
                             ),
-                            evidence=(
+                            evidence=_s(
+                                f"Image: {imagen}\n"
+                                f"Layer: ...{linea[-120:]}\n"
+                                f"Detected pattern: {redacted}",
                                 f"Imagen: {imagen}\n"
                                 f"Capa: ...{linea[-120:]}\n"
-                                f"Patrón detectado: {redacted}"
+                                f"Patrón detectado: {redacted}",
                             ),
-                            remediation=(
+                            remediation=_s(
+                                "1. Rotate the exposed secret immediately.\n"
+                                "2. Rebuild the image from scratch without the secret in the Dockerfile:\n"
+                                "   - Do not use RUN with credentials in plaintext\n"
+                                "   - Do not use ENV to inject secrets at build time\n"
+                                "3. Use Docker BuildKit secrets:\n"
+                                "   RUN --mount=type=secret,id=my_secret cat /run/secrets/my_secret\n"
+                                "4. Remove the compromised image from the registry and all its tags.\n"
+                                "Ref: CIS Docker Benchmark §4.10 · OWASP Docker Security",
                                 "1. Rotar inmediatamente el secreto expuesto.\n"
                                 "2. Reconstruir la imagen desde cero sin el secreto en el Dockerfile:\n"
                                 "   - No usar RUN con credenciales en claro\n"
@@ -927,7 +1087,7 @@ class DockerAuditor:
                                 "3. Usar Docker BuildKit secrets:\n"
                                 "   RUN --mount=type=secret,id=mi_secreto cat /run/secrets/mi_secreto\n"
                                 "4. Eliminar la imagen comprometida del registro y todos sus tags.\n"
-                                "Ref: CIS Docker Benchmark §4.10 · OWASP Docker Security"
+                                "Ref: CIS Docker Benchmark §4.10 · OWASP Docker Security",
                             ),
                         ))
                         break
@@ -972,23 +1132,35 @@ class DockerAuditor:
                 id="DOCK-AUTHZ-002",
                 severity="HIGH",
                 category="CVE",
-                title="CVE-2026-34040: Plugin AuthZ activo — versión daemon no determinada",
-                description=(
+                title=_s("CVE-2026-34040: AuthZ plugin active — daemon version undetermined", "CVE-2026-34040: Plugin AuthZ activo — versión daemon no determinada"),
+                description=_s(
+                    "Authorization (AuthZ) plugins are active in the Docker daemon. "
+                    "The daemon version could not be determined to confirm "
+                    "whether it is vulnerable to CVE-2026-34040. This CVE allows "
+                    "bypassing AuthZ plugins via HTTP requests with manipulated "
+                    "Transfer-Encoding chunked, gaining unauthorized daemon access. "
+                    "Manually verify whether the daemon is on a patched version.",
                     "Hay plugins de autorización (AuthZ) activos en el daemon Docker. "
                     "No se ha podido determinar la versión del daemon para confirmar "
                     "si es vulnerable a CVE-2026-34040. Este CVE permite eludir los "
                     "plugins AuthZ mediante peticiones HTTP con Transfer-Encoding "
                     "chunked manipulado, obteniendo acceso no autorizado al daemon. "
-                    "Verificar manualmente si el daemon está en una versión parcheada."
+                    "Verificar manualmente si el daemon está en una versión parcheada.",
                 ),
-                evidence=f"Plugins AuthZ activos: {plugins_str}",
-                remediation=(
+                evidence=_s(f"Active AuthZ plugins: {plugins_str}", f"Plugins AuthZ activos: {plugins_str}"),
+                remediation=_s(
+                    "Update the Docker daemon to a patched version:\n"
+                    "  Branch 27.x → 27.5.1 or later\n"
+                    "  Branch 26.x → 26.1.9 or later\n"
+                    "  Branch 25.x → 25.0.9 or later\n"
+                    "Check current version: docker version --format '{{.Server.Version}}'\n"
+                    "Ref: CVE-2026-34040 · Docker Security Advisory",
                     "Actualizar el daemon Docker a una versión parcheada:\n"
                     "  Rama 27.x → 27.5.1 o superior\n"
                     "  Rama 26.x → 26.1.9 o superior\n"
                     "  Rama 25.x → 25.0.9 o superior\n"
                     "Verificar versión actual: docker version --format '{{.Server.Version}}'\n"
-                    "Ref: CVE-2026-34040 · Docker Security Advisory"
+                    "Ref: CVE-2026-34040 · Docker Security Advisory",
                 ),
             ))
             return
@@ -1003,25 +1175,39 @@ class DockerAuditor:
                     f"CVE-2026-34040: Plugin AuthZ activo con daemon Docker vulnerable "
                     f"({daemon_ver})"
                 ),
-                description=(
+                description=_s(
+                    f"Docker daemon v{daemon_ver} has authorization plugins "
+                    f"active ({plugins_str}) and is vulnerable to CVE-2026-34040. "
+                    "This CVE allows bypassing AuthZ plugins via HTTP requests "
+                    "with manipulated Transfer-Encoding chunked, gaining "
+                    "unauthorized daemon access. The combination of active AuthZ "
+                    "with a vulnerable version is directly exploitable.",
                     f"El daemon Docker v{daemon_ver} tiene plugins de autorización "
                     f"activos ({plugins_str}) y es vulnerable a CVE-2026-34040. "
                     "Este CVE permite eludir los plugins AuthZ mediante peticiones "
                     "HTTP con Transfer-Encoding chunked manipulado, obteniendo acceso "
                     "no autorizado al daemon. La combinación de AuthZ activo con "
-                    "versión vulnerable es directamente explotable."
+                    "versión vulnerable es directamente explotable.",
                 ),
-                evidence=(
-                    f"Daemon: {daemon_ver} | Plugins AuthZ: {plugins_str}"
+                evidence=_s(
+                    f"Daemon: {daemon_ver} | AuthZ plugins: {plugins_str}",
+                    f"Daemon: {daemon_ver} | Plugins AuthZ: {plugins_str}",
                 ),
-                remediation=(
+                remediation=_s(
+                    "URGENT — Update the Docker daemon immediately:\n"
+                    "  Branch 27.x → 27.5.1 or later\n"
+                    "  Branch 26.x → 26.1.9 or later\n"
+                    "  Branch 25.x → 25.0.9 or later\n"
+                    "As a temporary mitigation, restrict Docker socket access\n"
+                    "exclusively to authorized processes (chmod 660 + docker group).\n"
+                    "Ref: CVE-2026-34040 · Docker Security Advisory",
                     "URGENTE — Actualizar el daemon Docker inmediatamente:\n"
                     "  Rama 27.x → 27.5.1 o superior\n"
                     "  Rama 26.x → 26.1.9 o superior\n"
                     "  Rama 25.x → 25.0.9 o superior\n"
                     "Como mitigación temporal, restringir el acceso al socket Docker\n"
                     "exclusivamente a procesos autorizados (chmod 660 + grupo docker).\n"
-                    "Ref: CVE-2026-34040 · Docker Security Advisory"
+                    "Ref: CVE-2026-34040 · Docker Security Advisory",
                 ),
             ))
 
@@ -1053,17 +1239,32 @@ class DockerAuditor:
                 id="DOCK-RUNC-001",
                 severity="CRITICAL",
                 category="CVE",
-                title=f"CVE-2025-52881: Versión runc vulnerable ({runc_ver})",
-                description=(
+                title=_s(f"CVE-2025-52881: Vulnerable runc version ({runc_ver})", f"CVE-2025-52881: Versión runc vulnerable ({runc_ver})"),
+                description=_s(
+                    f"Installed runc version ({runc_ver}) is vulnerable to "
+                    "CVE-2025-52881, which allows container escape via "
+                    "a race condition in network namespace management when "
+                    "starting the container init process. An attacker with "
+                    "the ability to run containers can gain root access "
+                    "on the host.",
                     f"La versión de runc instalada ({runc_ver}) es vulnerable a "
                     "CVE-2025-52881, que permite la escapada del contenedor mediante "
                     "una condición de carrera en la gestión de namespaces de red al "
                     "arrancar el proceso de inicio del contenedor. Un atacante con "
                     "capacidad de ejecutar contenedores puede obtener acceso root "
-                    "en el host."
+                    "en el host.",
                 ),
                 evidence=f"runc versión detectada: {runc_ver}",
-                remediation=(
+                remediation=_s(
+                    "Update runc to a patched version:\n"
+                    "  Branch 1.2.x → 1.2.8 or later\n"
+                    "  Branch 1.3.x → 1.3.3 or later\n"
+                    "  Branch 1.4.x → 1.4.0-rc.3 or later\n"
+                    "On Debian/Ubuntu systems:\n"
+                    "  apt-get update && apt-get upgrade runc\n"
+                    "Or update Docker Engine, which distributes updated runc:\n"
+                    "  apt-get upgrade docker-ce\n"
+                    "Ref: CVE-2025-52881 · runc Security Advisory",
                     "Actualizar runc a una versión parcheada:\n"
                     "  Rama 1.2.x → 1.2.8 o superior\n"
                     "  Rama 1.3.x → 1.3.3 o superior\n"
@@ -1072,7 +1273,7 @@ class DockerAuditor:
                     "  apt-get update && apt-get upgrade runc\n"
                     "O actualizar Docker Engine, que distribuye runc actualizado:\n"
                     "  apt-get upgrade docker-ce\n"
-                    "Ref: CVE-2025-52881 · runc Security Advisory"
+                    "Ref: CVE-2025-52881 · runc Security Advisory",
                 ),
             ))
 
@@ -1083,23 +1284,35 @@ class DockerAuditor:
                     id="DOCK-RUNC-002",
                     severity="HIGH",
                     category="CVE",
-                    title="Seccomp no habilitado por defecto — mitigación CVE-2025-52881 ausente",
-                    description=(
+                    title=_s("Seccomp not enabled by default — CVE-2025-52881 mitigation absent", "Seccomp no habilitado por defecto — mitigación CVE-2025-52881 ausente"),
+                    description=_s(
+                        "The default seccomp profile is not active in this Docker environment. "
+                        "Seccomp restricts syscalls available to containers and "
+                        "acts as an additional defense layer against container escapes, "
+                        "including CVE-2025-52881. Without seccomp, the exploitation risk "
+                        "of escape vulnerabilities is significantly higher.",
                         "El perfil seccomp por defecto no está activo en este entorno Docker. "
                         "Seccomp restringe las syscalls disponibles para los contenedores y "
                         "actúa como capa de defensa adicional frente a escapadas de contenedor, "
                         "incluyendo CVE-2025-52881. Sin seccomp, el riesgo de explotación "
-                        "de vulnerabilidades de escapada es significativamente mayor."
+                        "de vulnerabilidades de escapada es significativamente mayor.",
                     ),
-                    evidence=f"SecurityOptions del daemon: {stdout.strip()}",
-                    remediation=(
+                    evidence=_s(f"Daemon SecurityOptions: {stdout.strip()}", f"SecurityOptions del daemon: {stdout.strip()}"),
+                    remediation=_s(
+                        "Enable the default seccomp profile on the Docker daemon.\n"
+                        "In /etc/docker/daemon.json add or verify:\n"
+                        '  {"seccomp-profile": "/etc/docker/seccomp.json"}\n'
+                        "Docker's default profile already restricts the most "
+                        "dangerous syscalls and is included in the standard installation.\n"
+                        "Verify: docker info | grep -i seccomp\n"
+                        "Ref: Docker Security — Seccomp profiles · CVE-2025-52881",
                         "Habilitar el perfil seccomp por defecto en el daemon Docker.\n"
                         "En /etc/docker/daemon.json añadir o verificar:\n"
                         '  {"seccomp-profile": "/etc/docker/seccomp.json"}\n'
                         "El perfil por defecto de Docker ya restringe las syscalls más "
                         "peligrosas y está incluido en la instalación estándar.\n"
                         "Verificar: docker info | grep -i seccomp\n"
-                        "Ref: Docker Security — Seccomp profiles · CVE-2025-52881"
+                        "Ref: Docker Security — Seccomp profiles · CVE-2025-52881",
                     ),
                 ))
 
@@ -1169,23 +1382,35 @@ class DockerAuditor:
                 id="DOCK-SEC-010",
                 severity="MEDIUM",
                 category="Entorno",
-                title="AppArmor no habilitado en el daemon Docker (Linux)",
-                description=(
+                title=_s("AppArmor not enabled in Docker daemon (Linux)", "AppArmor no habilitado en el daemon Docker (Linux)"),
+                description=_s(
+                    "The Docker daemon does not report AppArmor as an active "
+                    "security mechanism. On Linux systems, AppArmor provides "
+                    "mandatory access control (MAC) that restricts operations "
+                    "available to container processes, limiting the impact of "
+                    "a possible container escape or compromise.",
                     "El daemon Docker no reporta AppArmor como mecanismo de seguridad "
                     "activo. En sistemas Linux, AppArmor proporciona control de acceso "
                     "obligatorio (MAC) que restringe las operaciones disponibles para "
                     "los procesos dentro de los contenedores, limitando el impacto de "
-                    "una posible escapada o compromiso de contenedor."
+                    "una posible escapada o compromiso de contenedor.",
                 ),
                 evidence=f"SecurityOptions del daemon: {stdout.strip()}",
-                remediation=(
+                remediation=_s(
+                    "Enable AppArmor on the system and install the Docker profile:\n"
+                    "  apt-get install apparmor apparmor-utils\n"
+                    "  systemctl enable apparmor && systemctl start apparmor\n"
+                    "The 'docker-default' profile activates automatically when "
+                    "the Docker daemon restarts.\n"
+                    "Verify: docker info | grep -i apparmor\n"
+                    "Ref: CIS Docker Benchmark §5.1 · Docker AppArmor Security Profile",
                     "Habilitar AppArmor en el sistema e instalar el perfil Docker:\n"
                     "  apt-get install apparmor apparmor-utils\n"
                     "  systemctl enable apparmor && systemctl start apparmor\n"
                     "El perfil 'docker-default' se activa automáticamente al "
                     "reiniciar el daemon Docker.\n"
                     "Verificar estado: docker info | grep -i apparmor\n"
-                    "Ref: CIS Docker Benchmark §5.1 · Docker AppArmor Security Profile"
+                    "Ref: CIS Docker Benchmark §5.1 · Docker AppArmor Security Profile",
                 ),
             ))
 
@@ -1215,26 +1440,41 @@ class DockerAuditor:
                 f"Socket Docker montado en {num} contenedor(es) en marcha "
                 "(vector CVE-2026-34040)"
             ),
-            description=(
+            description=_s(
+                f"{num} running container(s) have the Docker socket "
+                "(/var/run/docker.sock) mounted as a volume. Any process "
+                "within those containers can communicate directly with the "
+                "daemon, create privileged containers, and gain root access on "
+                "the host. In the presence of CVE-2026-34040, this scenario also "
+                "allows bypassing active authorization (AuthZ) plugins, "
+                "amplifying the bypass impact.",
                 f"{num} contenedor(es) en ejecución tienen el socket Docker "
                 "(/var/run/docker.sock) montado como volumen. Cualquier proceso "
                 "dentro de esos contenedores puede comunicarse directamente con el "
                 "daemon, crear contenedores privilegiados y obtener acceso root en "
                 "el host. En presencia de CVE-2026-34040, este escenario también "
                 "permite eludir los plugins de autorización (AuthZ) activos, "
-                "amplificando el impacto del bypass."
+                "amplificando el impacto del bypass.",
             ),
-            evidence=(
-                f"Contenedores con socket montado: {', '.join(contenedores_con_sock)}"
+            evidence=_s(
+                f"Containers with mounted socket: {', '.join(contenedores_con_sock)}",
+                f"Contenedores con socket montado: {', '.join(contenedores_con_sock)}",
             ),
-            remediation=(
+            remediation=_s(
+                "Remove the Docker socket mount from all listed containers.\n"
+                "Alternatives if the container needs to manage other containers:\n"
+                "  1. docker-socket-proxy: restricts exposed API methods\n"
+                "     (https://github.com/Tecnativa/docker-socket-proxy)\n"
+                "  2. Docker-in-Docker (DinD) with TLS and rotating credentials\n"
+                "  3. Kubernetes API if the environment allows it\n"
+                "Ref: CIS Docker Benchmark §5.31 · CVE-2026-34040",
                 "Eliminar el montaje del socket Docker de todos los contenedores listados.\n"
                 "Alternativas si el contenedor necesita gestionar otros contenedores:\n"
                 "  1. docker-socket-proxy: restringe los métodos de API expuestos\n"
                 "     (https://github.com/Tecnativa/docker-socket-proxy)\n"
                 "  2. Docker-in-Docker (DinD) con TLS y credenciales rotativas\n"
                 "  3. API de Kubernetes si el entorno lo permite\n"
-                "Ref: CIS Docker Benchmark §5.31 · CVE-2026-34040"
+                "Ref: CIS Docker Benchmark §5.31 · CVE-2026-34040",
             ),
         ))
 
