@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-VERSION   = "1.6.0"
+VERSION   = "1.7.0"
 TOOL_NAME = "vamp-docker-audit"
 
 LANG: str = "en"
