@@ -163,7 +163,7 @@ python3 vamp_docker_audit.py \
 ```
 $ python3 vamp_docker_audit.py --containers web,api,db,cache
 
- vamp-docker-audit v1.6.0 — VampSecure Labs
+ vamp-docker-audit v1.7.0 — VampSecure Labs
  Docker socket: /var/run/docker.sock  ✓ Accessible
  Containers targeted: 4  |  Running: 4  |  Stopped: 0
 
@@ -266,6 +266,7 @@ Use exclusively on systems you own or for which you hold explicit written author
 
 | Version | Main changes |
 |---------|-------------|
+| v1.7.0 | Bilingual `--help` menu: `_detect_lang()` pre-parser detects `--lang` / `LANG` env var |
 | v1.6.0 | Bilingual EN/ES output via `--lang en|es` (was: bilingual README only) |
 | v1.6 | Bilingual README (EN/ES) |
 | v1.5.0 | Modularización lib+cli |
@@ -427,7 +428,7 @@ python3 vamp_docker_audit.py \
 ```
 $ python3 vamp_docker_audit.py --containers web,api,db,cache
 
- vamp-docker-audit v1.6.0 — VampSecure Labs
+ vamp-docker-audit v1.7.0 — VampSecure Labs
  Docker socket: /var/run/docker.sock  ✓ Accesible
  Contenedores objetivo: 4  |  En ejecución: 4  |  Parados: 0
 
@@ -530,6 +531,7 @@ Uso exclusivo en sistemas propios o para los que se dispone de autorización esc
 
 | Versión | Cambios principales |
 |---------|---------------------|
+| v1.7.0 | Menú `--help` bilingüe: `_detect_lang()` detecta `--lang` / variable `LANG` antes del parser |
 | v1.6.0 | Salida bilingüe EN/ES mediante `--lang en|es` (antes: solo README bilingüe) |
 | v1.6 | README bilingüe (EN/ES) |
 | v1.5.0 | Modularización lib+cli |
