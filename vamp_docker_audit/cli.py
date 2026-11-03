@@ -104,8 +104,32 @@ def _generar_sboms(
 # CLI
 # ---------------------------------------------------------------------------
 
+
+def _detect_lang() -> str:
+    """Detect output language before full CLI parse.
+
+    Priority: --lang in sys.argv > LANG/LANGUAGE env var > 'en'.
+    """
+    import os as _os, sys as _sys
+    argv = _sys.argv[1:]
+    for i, arg in enumerate(argv):
+        if arg == "--lang" and i + 1 < len(argv):
+            v = argv[i + 1]
+            return v if v in ("en", "es") else "en"
+        if arg.startswith("--lang="):
+            v = arg.split("=", 1)[1]
+            return v if v in ("en", "es") else "en"
+    for var in ("LANG", "LANGUAGE"):
+        val = _os.environ.get(var, "")
+        if val.lower().startswith("es"):
+            return "es"
+    return "en"
+
 def _parse_args() -> argparse.Namespace:
     """Parsea los argumentos de la línea de comandos."""
+    import vamp_docker_audit._models as _models_mod
+    _models_mod.LANG = _detect_lang()
+
     p = argparse.ArgumentParser(
         prog=TOOL_NAME,
         description=(
